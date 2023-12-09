@@ -23,20 +23,19 @@ int main(int argc, char **argv) {
   std::memcpy(&req, response.data(), sizeof(socks4_request));
 
   std::cout << (int)req.socks4_version << " " << (int)req.cmd << " "
-            << req.dstport << " " << req.destip << " " << req.id << std::endl;
+            << req.dstport << " " << req.destip << " " << std::endl;
 
   socks4_response resp;
   resp.vn = 0x00;
   resp.rep = req_granted;
   std::string data;
+  data.resize(sizeof(resp));
   memcpy(data.data(), &resp, sizeof(resp));
   cli_sock.send(data);
 
-  sleep(1);
+  // Now implement proxy logic here.
 
   cli_sock.close();
   serv_sock.close();
-  // Now implement proxy logic here.
-
   return 0;
 }

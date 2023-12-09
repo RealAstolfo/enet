@@ -15,7 +15,6 @@ struct socks4_request {
   socks4_cmd cmd;
   std::uint16_t dstport;
   std::uint64_t destip; // must be in network order
-  std::string id;
 };
 
 enum socks4a_reply_code : std::uint8_t {
