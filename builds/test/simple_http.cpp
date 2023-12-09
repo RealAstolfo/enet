@@ -5,8 +5,8 @@
 #include <string>
 #include <string_view>
 
-#include "common/networking/http.hpp"
-#include "common/string/args.hpp"
+#include "http.hpp"
+#include "args.hpp"
 
 int main(int argc, char **argv) {
   arguments args;
