@@ -10,8 +10,8 @@ LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
 SSL = -lssl -lcrypto
 
 # -target native-windows
-CFLAGS = $(ZTARGET) -march=native -O3 -g -Wall -Wextra -Wno-missing-field-initializers -pedantic $(INC)
-CXXFLAGS = -std=c++20 $(CFLAGS)
+CFLAGS = -march=native -O3 -g -Wall -Wextra -Wno-missing-field-initializers -pedantic $(INC)
+CXXFLAGS = -std=c++23 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 
 # Networking:
