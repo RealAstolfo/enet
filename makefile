@@ -40,6 +40,26 @@ https-test.o:
 https-test: https-test.o
 	${CXX} ${CXXFLAGS} ${SSL} $^ -o $@
 
+
+#########################################################################################
+
+# SOCKS4 Testing
+#########################################################################################
+
+http_socks4_client.o:
+	${CXX} ${CXXFLAGS} -c builds/test/http_socks4_client.cpp -o $@
+
+http_socks4_server.o:
+	${CXX} ${CXXFLAGS} -c builds/test/http_socks4_server.cpp -o $@
+
+http_socks4_client: http_socks4_client.o
+	${CXX} ${CXXFLAGS} $^ -o $@
+
+http_socks4_server: http_socks4_server.o
+	${CXX} ${CXXFLAGS} $^ -o $@
+
+
+
 #########################################################################################
 
 # I2P Client Testing
@@ -51,7 +71,7 @@ https-test: https-test.o
 #i2p-test: i2p-test.o i2p.o
 #	${CXX} ${CXXFLAGS} ${SSL} $^ ${I2P} -o $@
 
-all: https-test http-test
+all: https-test http-test http_socks4_client http_socks4_server
 
 clean:
 	-rm -f http-test https-test i2p-test

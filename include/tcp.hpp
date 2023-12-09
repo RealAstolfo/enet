@@ -16,6 +16,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -123,6 +124,19 @@ struct tcp_socket {
     }
 
     return true;
+  }
+
+  tcp_socket accept() {
+    sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    tcp_socket client_socket;
+    client_socket.sockfd =
+        ::accept(sockfd, (sockaddr *)&client_addr, &client_len);
+    if (client_socket.sockfd == -1) {
+      std::cerr << "Accept failed" << std::endl;
+    }
+
+    return client_socket;
   }
 
   bool connect(const endpoint ep) {
