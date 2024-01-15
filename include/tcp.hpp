@@ -16,6 +16,7 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -47,7 +48,7 @@ struct tcp_resolver {
     char ip_address[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
+    hints.ai_family = AF_INET;       // AF_UNSPEC;     // IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP socket
 
     std::vector<endpoint> endpoints;
@@ -77,7 +78,7 @@ struct tcp_resolver {
 
       // Convert the IP address to a string
       inet_ntop(p->ai_family, addr, ip_address, sizeof ip_address);
-      endpoints.emplace_back((char *)addr, port, is_ipv6);
+      endpoints.emplace_back(ip_address, port, is_ipv6);
     }
 
     freeaddrinfo(res);
@@ -123,6 +124,19 @@ struct tcp_socket {
     }
 
     return true;
+  }
+
+  tcp_socket accept() {
+    sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    tcp_socket client_socket;
+    client_socket.sockfd =
+        ::accept(sockfd, (sockaddr *)&client_addr, &client_len);
+    if (client_socket.sockfd == -1) {
+      std::cerr << "Accept failed" << std::endl;
+    }
+
+    return client_socket;
   }
 
   bool connect(const endpoint ep) {

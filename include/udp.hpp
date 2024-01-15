@@ -22,7 +22,7 @@
 #include <unistd.h>
 #endif
 
-#include "common/networking/endpoint.hpp"
+#include "endpoint.hpp"
 
 struct udp_resolver {
   udp_resolver() {
@@ -47,7 +47,7 @@ struct udp_resolver {
     char ip_address[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;    // IPv4 or IPv6
+    hints.ai_family = AF_INET;      // AF_UNSPEC;    // IPv4 or IPv6
     hints.ai_socktype = SOCK_DGRAM; // UDP socket
 
     std::vector<endpoint> endpoints;

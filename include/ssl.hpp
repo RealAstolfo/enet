@@ -50,7 +50,7 @@ struct ssl_resolver {
     char ip_address[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
+    hints.ai_family = AF_INET;       // AF_UNSPEC;     // IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP socket
 
     std::vector<endpoint> endpoints;
@@ -96,83 +96,66 @@ struct ssl_socket {
 
   ssl_socket() : sockfd(-1) {}
 
-  bool connect(const endpoint ep) {
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  bool bind(const endpoint ep) {
+    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd == -1) {
       std::cerr << "Failed to create socket." << std::endl;
       return false;
     }
 
-    if (ep.ipv6) {
-      sockaddr_in6 server_addr{};
-      server_addr.sin6_family = AF_INET;
-      server_addr.sin6_port = htons(ep.host_port);
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ep.host_port);
 
-      if (inet_pton(AF_INET6, ep.host_ip.c_str(), &(server_addr.sin6_addr)) <=
-          0) {
-        std::cerr << "Invalid address/Address not supported: "
-                  << ep.host_ip.c_str() << std::endl;
-        if (sockfd != -1) {
-#ifdef _WIN32
-          closesocket(sockfd);
-#else
-          ::close(sockfd);
-#endif
-          sockfd = -1;
-        }
+    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
+      std::cerr << "Invalid address/Address not supported." << std::endl;
+      close();
+      return false;
+    }
 
-        return false;
-      }
+    if (::bind(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
+               sizeof(server_addr)) < 0) {
+      std::cerr << "Bind failed." << std::endl;
+      close();
+      return false;
+    }
 
-      if (::connect(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-                    sizeof(server_addr)) < 0) {
-        std::cerr << "Connection failed." << std::endl;
-        if (sockfd != -1) {
-#ifdef _WIN32
-          closesocket(sockfd);
-#else
-          ::close(sockfd);
-#endif
-          sockfd = -1;
-        }
+    return true;
+  }
 
-        return false;
-      }
-    } else {
-      sockaddr_in server_addr{};
-      server_addr.sin_family = AF_INET;
-      server_addr.sin_port = htons(ep.host_port);
+  bool listen(const int max_incoming_connections) {
+    if (::listen(sockfd, max_incoming_connections) == -1) {
+      std::cerr << "Listen Failed" << std::endl;
+      close();
+      return false;
+    }
 
-      if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <=
-          0) {
-        std::cerr << "Invalid address/Address not supported: "
-                  << ep.host_ip.c_str() << std::endl;
-        if (sockfd != -1) {
-#ifdef _WIN32
-          closesocket(sockfd);
-#else
-          ::close(sockfd);
-#endif
-          sockfd = -1;
-        }
+    return true;
+  }
 
-        return false;
-      }
+  bool connect(const endpoint ep) {
+    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sockfd == -1) {
+      std::cerr << "Failed to create socket." << std::endl;
+      return false;
+    }
 
-      if (::connect(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-                    sizeof(server_addr)) < 0) {
-        std::cerr << "Connection failed." << std::endl;
-        if (sockfd != -1) {
-#ifdef _WIN32
-          closesocket(sockfd);
-#else
-          ::close(sockfd);
-#endif
-          sockfd = -1;
-        }
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ep.host_port);
 
-        return false;
-      }
+    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
+      std::cerr << "Invalid address/Address not supported: "
+                << ep.host_ip.c_str() << std::endl;
+      close();
+      return false;
+    }
+
+    if (::connect(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
+                  sizeof(server_addr)) < 0) {
+      std::cerr << "Connection failed." << std::endl;
+      close();
+      return false;
     }
 
     // Initiate ssl part
@@ -233,4 +216,22 @@ struct ssl_socket {
     }
   }
 };
+
+inline ssl_socket &operator<<(ssl_socket &sock, const std::string &data) {
+  sock.send(data);
+  return sock;
+}
+
+inline ssl_socket &operator>>(ssl_socket &sock, std::string &data) {
+  std::array<char, 4096> receive_buffer;
+
+  std::size_t bytes = 0;
+  do {
+    bytes = sock.receive(receive_buffer);
+    data.append(receive_buffer.data(), bytes);
+  } while (bytes > 0);
+
+  return sock;
+}
+
 #endif
