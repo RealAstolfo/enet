@@ -104,8 +104,9 @@ struct i2p_socket {
     ssize_t bytes_read = 0;
     if (stream->GetStatus() == i2p::stream::eStreamStatusNew ||
         stream->GetStatus() == i2p::stream::eStreamStatusOpen) {
-      bytes_read = stream->Receive(reinterpret_cast<uint8_t *>(buffer.data()),
-                                   buffer.size(), 0);
+      bytes_read =
+          stream->Receive(reinterpret_cast<uint8_t *>(buffer.data()),
+                          buffer.size(), std::numeric_limits<int>::max());
     } else {
       bytes_read = stream->ReadSome(reinterpret_cast<uint8_t *>(buffer.data()),
                                     buffer.size());

@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
                      return false;
                    }));
 
-  sleep(60 * 10); // testing sleep method again
+  //  sleep(60 * 10); // testing sleep method again
 
   args.process_args(argc, argv);
 
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
                  << "Host: " << host + ".b32.i2p"
                  << "\r\n"
                  << "Accept: */*\r\n"
-                 << "Connection: keep-alive\r\n\r\n";
+                 << "Connection: close\r\n\r\n";
 
   std::string request = request_stream.str();
 
@@ -78,10 +78,11 @@ int main(int argc, char **argv) {
   std::size_t bytes = 0;
   do {
     bytes = is.receive(receive_buffer);
-    response.append(receive_buffer.data(), bytes);
-    if (bytes > 0)
+    if (bytes > 0) {
       std::cerr << "Bytes Received " << bytes << std::endl;
-  } while (is.stream->IsOpen() || bytes > 0);
+      response.append(receive_buffer.data(), bytes);
+    }
+  } while (bytes > 0);
 
   std::cerr << std::endl;
 
