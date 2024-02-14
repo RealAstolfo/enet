@@ -7,10 +7,7 @@
 #include <map>
 #include <mutex>
 
-i2p_session::i2p_session() {
-  if (!is_set)
-    generate_keys();
-}
+i2p_session::i2p_session() { generate_keys(); }
 
 i2p_session::~i2p_session() { stop(); }
 
@@ -23,7 +20,6 @@ std::string i2p_session::generate_b32_address_from_destination(
 }
 
 const i2p::data::PrivateKeys &i2p_session::generate_keys() {
-  is_set = true;
   keys = i2p::data::CreateRandomKeys();
   return keys;
 }
@@ -60,7 +56,7 @@ void add_incoming_i2p_stream(std::shared_ptr<i2p::stream::Stream> stream) {
     return;
   static std::mutex v_lock;
   v_lock.lock();
-  i2p_session::instance().connection_streams.push_back(stream);
+  i2p_session::instance().connection_streams.push_back(std::move(stream));
   v_lock.unlock();
 }
 

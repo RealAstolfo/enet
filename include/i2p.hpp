@@ -53,7 +53,6 @@ private:
   void handle_accept(std::shared_ptr<i2p::stream::Stream> stream);
 
 public:
-  bool is_set;
   i2p::data::PrivateKeys keys;
   std::shared_ptr<i2p::client::ClientDestination> local_destination;
   std::vector<std::shared_ptr<i2p::stream::Stream>> connection_streams;
