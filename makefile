@@ -9,7 +9,7 @@ LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
 
 I2P = -L./vendors/i2pd -Wl,-Bstatic -li2pd -Wl,-Bdynamic -lssl -lcrypto -lz -lboost_system -lboost_program_options -lboost_filesystem
 
-CFLAGS = -march=native -O3 -pg -Wall -Wextra -pedantic $(INC)
+CFLAGS = -march=native -O3 -g -Wall -Wextra -pedantic $(INC)
 CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 

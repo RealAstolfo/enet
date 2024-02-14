@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <regex>
 
 #include "args.hpp"
 #include "http.hpp"
