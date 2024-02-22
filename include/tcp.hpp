@@ -2,6 +2,7 @@
 #define TCP_HPP
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -181,7 +182,22 @@ struct tcp_socket {
     return bytes_sent;
   }
 
-  ssize_t receive(std::array<char, 4096> &buffer) {
+  template <size_t N> ssize_t receive(std::array<char, N> &buffer) {
+    if (sockfd == -1) {
+      std::cerr << "Socket not connected." << std::endl;
+      return -1;
+    }
+
+    ssize_t bytes_read = ::recv(sockfd, buffer.data(), buffer.size(), 0);
+    if (bytes_read == -1) {
+      std::cerr << "Failed to receive data." << std::endl;
+      return -1;
+    }
+
+    return bytes_read;
+  }
+
+  ssize_t receive(std::vector<uint8_t> &buffer) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
