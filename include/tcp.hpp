@@ -182,7 +182,7 @@ struct tcp_socket {
     return bytes_sent;
   }
 
-  template <size_t N> ssize_t receive(std::array<char, N> &buffer) {
+  template <typename Container> ssize_t receive(Container &buffer) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
@@ -203,9 +203,9 @@ struct tcp_socket {
   completely full, as to say, it will never return if the buffer wasnt
   satisfied.
  */
-  template <size_t N> ssize_t receive_some(std::array<char, N> &buffer) {
+  template <typename Container> ssize_t receive_some(Container &buffer) {
     ssize_t total_bytes_read = 0;
-    while (total_bytes_read < N) {
+    while (total_bytes_read < std::size(buffer)) {
       if (sockfd == -1) {
         std::cerr << "Socket not connected." << std::endl;
         return -1;
