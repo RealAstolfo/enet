@@ -167,13 +167,13 @@ struct tcp_socket {
     return true;
   }
 
-  ssize_t send(const std::string_view &data) {
+  template <typename Container> ssize_t send(const Container &data) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
     }
 
-    ssize_t bytes_sent = ::send(sockfd, data.data(), data.size(), 0);
+    ssize_t bytes_sent = ::send(sockfd, std::data(data), std::size(data), 0);
     if (bytes_sent == -1) {
       std::cerr << "Failed to send data." << std::endl;
       return -1;
