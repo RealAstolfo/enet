@@ -188,7 +188,8 @@ struct tcp_socket {
       return -1;
     }
 
-    ssize_t bytes_read = ::recv(sockfd, buffer.data(), buffer.size(), 0);
+    ssize_t bytes_read =
+        ::recv(sockfd, std::data(buffer), std::size(buffer), 0);
     if (bytes_read == -1) {
       std::cerr << "Failed to receive data." << std::endl;
       return -1;
@@ -216,7 +217,8 @@ struct tcp_socket {
       if (bytes_read == -1) {
         std::cerr << "Failed to receive data." << std::endl;
         return -1;
-      }
+      } else if (bytes_read > 0)
+        total_bytes_read += bytes_read;
     }
 
     return total_bytes_read;
