@@ -211,7 +211,8 @@ struct tcp_socket {
         return -1;
       }
 
-      const auto begin = *(std::begin(buffer) + total_bytes_read);
+      const auto begin =
+          std::addressof(*(std::begin(buffer) + total_bytes_read));
       const std::size_t left = std::size(buffer) - total_bytes_read;
       ssize_t bytes_read = ::recv(sockfd, begin, left, 0);
       if (bytes_read == -1) {
