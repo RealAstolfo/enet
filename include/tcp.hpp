@@ -189,12 +189,37 @@ struct tcp_socket {
     }
 
     ssize_t bytes_read = ::recv(sockfd, buffer.data(), buffer.size(), 0);
-    if (bytes_read == -1 || bytes_read != N) {
+    if (bytes_read == -1) {
       std::cerr << "Failed to receive data." << std::endl;
       return -1;
     }
 
     return bytes_read;
+  }
+
+  /*
+  As opposed to "receive", "receive_some" will block until the buffer is
+  completely full, as to say, it will never return if the buffer wasnt
+  satisfied.
+ */
+  template <size_t N> ssize_t receive_some(std::array<char, N> &buffer) {
+    ssize_t total_bytes_read = 0;
+    while (total_bytes_read < N) {
+      if (sockfd == -1) {
+        std::cerr << "Socket not connected." << std::endl;
+        return -1;
+      }
+
+      const auto begin = *(std::begin(buffer) + total_bytes_read);
+      const std::size_t left = std::size(buffer) - total_bytes_read;
+      ssize_t bytes_read = ::recv(sockfd, begin, left, 0);
+      if (bytes_read == -1) {
+        std::cerr << "Failed to receive data." << std::endl;
+        return -1;
+      }
+    }
+
+    return total_bytes_read;
   }
 
   void close() {
