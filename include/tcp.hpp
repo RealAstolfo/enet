@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
@@ -223,6 +224,17 @@ struct tcp_socket {
     }
 
     return total_bytes_read;
+  }
+
+  /*
+    Receive exactly this object.
+   */
+  template <typename T> ssize_t receive_into(T &obj) {
+    using variant = std::variant<T, std::array<std::byte, sizeof(T)>>;
+    variant v;
+    ssize_t len = receive_some(std::get<std::array<std::byte, sizeof(T)>>(v));
+    obj = std::get<T>(v);
+    return len;
   }
 
   void close() {
