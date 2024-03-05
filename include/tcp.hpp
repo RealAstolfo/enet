@@ -205,7 +205,7 @@ struct tcp_socket {
   satisfied.
  */
   template <typename Container> ssize_t receive_some(Container &buffer) {
-    ssize_t total_bytes_read = 0;
+    size_t total_bytes_read = 0;
     while (total_bytes_read < std::size(buffer)) {
       if (sockfd == -1) {
         std::cerr << "Socket not connected." << std::endl;
