@@ -47,10 +47,9 @@ struct ssl_resolver {
                                 const std::string &service) {
     struct addrinfo hints, *res;
     int status;
-    char ip_address[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET;       // AF_UNSPEC;     // IPv4 or IPv6
+    hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP socket
 
     std::vector<endpoint> endpoints;
@@ -61,27 +60,7 @@ struct ssl_resolver {
     }
 
     for (struct addrinfo *p = res; p != nullptr; p = p->ai_next) {
-      void *addr;
-      bool is_ipv6;
-      std::uint16_t port = 0;
-
-      if (p->ai_family == AF_INET) {
-        struct sockaddr_in *ipv4 =
-            reinterpret_cast<struct sockaddr_in *>(p->ai_addr);
-        addr = &(ipv4->sin_addr);
-        is_ipv6 = false;
-        port = ntohs(ipv4->sin_port);
-      } else {
-        struct sockaddr_in6 *ipv6 =
-            reinterpret_cast<struct sockaddr_in6 *>(p->ai_addr);
-        addr = &(ipv6->sin6_addr);
-        is_ipv6 = true;
-        port = ntohs(ipv6->sin6_port);
-      }
-
-      // Convert the IP address to a string
-      inet_ntop(p->ai_family, addr, ip_address, sizeof ip_address);
-      endpoints.emplace_back(ip_address, port, is_ipv6);
+      endpoints.emplace_back(*p);
     }
 
     freeaddrinfo(res);
@@ -103,18 +82,8 @@ struct ssl_socket {
       return false;
     }
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(ep.host_port);
-
-    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
-      std::cerr << "Invalid address/Address not supported." << std::endl;
-      close();
-      return false;
-    }
-
-    if (::bind(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-               sizeof(server_addr)) < 0) {
+    if (::bind(sockfd, reinterpret_cast<const sockaddr *>(&ep.addr),
+               sizeof(ep.addr)) < 0) {
       std::cerr << "Bind failed." << std::endl;
       close();
       return false;
@@ -133,6 +102,19 @@ struct ssl_socket {
     return true;
   }
 
+  ssl_socket accept() {
+    sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    ssl_socket client_socket;
+    client_socket.sockfd =
+        ::accept(sockfd, (sockaddr *)&client_addr, &client_len);
+    if (client_socket.sockfd == -1) {
+      std::cerr << "Accept failed" << std::endl;
+    }
+
+    return client_socket;
+  }
+
   bool connect(const endpoint ep) {
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd == -1) {
@@ -140,19 +122,8 @@ struct ssl_socket {
       return false;
     }
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(ep.host_port);
-
-    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
-      std::cerr << "Invalid address/Address not supported: "
-                << ep.host_ip.c_str() << std::endl;
-      close();
-      return false;
-    }
-
-    if (::connect(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-                  sizeof(server_addr)) < 0) {
+    if (::connect(sockfd, reinterpret_cast<const sockaddr *>(&ep.addr),
+                  sizeof(ep.addr)) < 0) {
       std::cerr << "Connection failed." << std::endl;
       close();
       return false;
@@ -168,13 +139,13 @@ struct ssl_socket {
     return true;
   }
 
-  ssize_t send(const std::string_view &data) {
+  template <typename Container> ssize_t send(const Container &data) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
     }
 
-    ssize_t bytes_sent = SSL_write(ssl, data.data(), data.size());
+    ssize_t bytes_sent = SSL_write(ssl, std::data(data), std::size(data));
     if (bytes_sent == -1) {
       std::cerr << "Failed to send data." << std::endl;
       return -1;
@@ -183,13 +154,13 @@ struct ssl_socket {
     return bytes_sent;
   }
 
-  ssize_t receive(std::array<char, 4096> &buffer) {
+  template <typename Container> ssize_t receive(Container &buffer) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
     }
 
-    ssize_t bytes = SSL_read(ssl, buffer.data(), buffer.size() - 1);
+    ssize_t bytes = SSL_read(ssl, std::data(buffer), std::size(buffer) - 1);
     buffer[bytes] = '\0';
     if (bytes == -1) {
       std::cerr << "Failed to receive data." << std::endl;
@@ -197,6 +168,43 @@ struct ssl_socket {
     }
 
     return bytes;
+  }
+
+  template <typename Container> ssize_t receive_some(Container &buffer) {
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < std::size(buffer)) {
+      if (sockfd == -1) {
+        std::cerr << "Socket not connected." << std::endl;
+        return -1;
+      }
+
+      const auto begin =
+          std::addressof(*(std::begin(buffer) + total_bytes_read));
+      const std::size_t left = std::size(buffer) - total_bytes_read;
+      ssize_t bytes_read = ::recv(sockfd, begin, left, 0);
+      if (bytes_read == -1) {
+        std::cerr << "Failed to receive data." << std::endl;
+        return -1;
+      } else if (bytes_read > 0)
+        total_bytes_read += bytes_read;
+    }
+
+    return total_bytes_read;
+  }
+
+  /*
+    Receive exactly this object.
+   */
+  template <typename T> ssize_t receive_into(T &obj) {
+    union var {
+      T obj;
+      std::array<std::byte, sizeof(T)> bytes;
+    };
+
+    var v;
+    ssize_t len = receive_some(v.bytes);
+    obj = v.obj;
+    return len;
   }
 
   void close() {

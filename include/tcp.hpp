@@ -47,7 +47,6 @@ struct tcp_resolver {
                                 const std::string &service) {
     struct addrinfo hints, *res;
     int status;
-    char ip_address[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;       // AF_UNSPEC;     // IPv4 or IPv6
@@ -61,26 +60,7 @@ struct tcp_resolver {
     }
 
     for (struct addrinfo *p = res; p != nullptr; p = p->ai_next) {
-      void *addr;
-      std::uint16_t port = 0;
-      bool is_ipv6 = false;
-
-      if (p->ai_family == AF_INET) {
-        struct sockaddr_in *ipv4 =
-            reinterpret_cast<struct sockaddr_in *>(p->ai_addr);
-        addr = &(ipv4->sin_addr);
-        port = ntohs(ipv4->sin_port);
-      } else {
-        struct sockaddr_in6 *ipv6 =
-            reinterpret_cast<struct sockaddr_in6 *>(p->ai_addr);
-        addr = &(ipv6->sin6_addr);
-        is_ipv6 = true;
-        port = ntohs(ipv6->sin6_port);
-      }
-
-      // Convert the IP address to a string
-      inet_ntop(p->ai_family, addr, ip_address, sizeof ip_address);
-      endpoints.emplace_back(ip_address, port, is_ipv6);
+      endpoints.emplace_back(*p);
     }
 
     freeaddrinfo(res);
@@ -98,18 +78,8 @@ struct tcp_socket {
       return false;
     }
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(ep.host_port);
-
-    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
-      std::cerr << "Invalid address/Address not supported." << std::endl;
-      close();
-      return false;
-    }
-
-    if (::bind(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-               sizeof(server_addr)) < 0) {
+    if (::bind(sockfd, reinterpret_cast<const sockaddr *>(&ep.addr),
+               sizeof(ep.addr)) < 0) {
       std::cerr << "Bind failed." << std::endl;
       close();
       return false;
@@ -148,18 +118,8 @@ struct tcp_socket {
       return false;
     }
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(ep.host_port);
-
-    if (inet_pton(AF_INET, ep.host_ip.c_str(), &(server_addr.sin_addr)) <= 0) {
-      std::cerr << "Invalid address/Address not supported." << std::endl;
-      close();
-      return false;
-    }
-
-    if (::connect(sockfd, reinterpret_cast<sockaddr *>(&server_addr),
-                  sizeof(server_addr)) < 0) {
+    if (::connect(sockfd, reinterpret_cast<const sockaddr *>(&ep.addr),
+                  sizeof(ep.addr)) < 0) {
       std::cerr << "Connection failed." << std::endl;
       close();
       return false;
@@ -230,10 +190,14 @@ struct tcp_socket {
     Receive exactly this object.
    */
   template <typename T> ssize_t receive_into(T &obj) {
-    using variant = std::variant<T, std::array<std::byte, sizeof(T)>>;
-    variant v;
-    ssize_t len = receive_some(std::get<std::array<std::byte, sizeof(T)>>(v));
-    obj = std::get<T>(v);
+    union var {
+      T obj;
+      std::array<std::byte, sizeof(T)> bytes;
+    };
+
+    var v;
+    ssize_t len = receive_some(v.bytes);
+    obj = v.obj;
     return len;
   }
 
