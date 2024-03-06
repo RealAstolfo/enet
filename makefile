@@ -72,9 +72,21 @@ i2p-test.o:
 i2p-test: i2p-test.o i2p.o vendors/i2pd/libi2pd.a
 	${CXX} ${CXXFLAGS} $^ ${I2P} -o $@
 
-all: http-test https-test i2p-test
+
+#########################################################################################
+
+# Network Buffer Testing
+#########################################################################################
+network-buffer-test.o:
+	${CXX} ${CXXFLAGS} -c builds/test/network_buffer_test.cpp -o $@
+
+network-buffer-test: network-buffer-test.o
+	${CXX} ${CXXFLAGS} $^ -o $@
+
+
+all: http-test https-test i2p-test network-buffer-test
 
 clean:
-	-rm -f http-test https-test i2p-test *.o
+	-rm -f http-test https-test i2p-test network-buffer-test *.o
 	make -C vendors/exstd clean
 	make -C vendors/i2pd clean
