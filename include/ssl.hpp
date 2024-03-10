@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <openssl/rsa.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -99,6 +100,52 @@ struct ssl_socket {
       return false;
     }
 
+    // Initiate ssl part
+    SSL_library_init();
+    ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+    EVP_PKEY *key = EVP_PKEY_new();
+    EVP_PKEY_CTX *pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if (!pkey_ctx || EVP_PKEY_keygen_init(pkey_ctx) <= 0 ||
+        EVP_PKEY_CTX_set_rsa_keygen_bits(pkey_ctx, 2048) <= 0) {
+      std::cerr
+          << "EVP_PKEY_keygen_init or EVP_PKEY_CTX_set_rsa_keygen_bits error"
+          << std::endl;
+    }
+
+    if (EVP_PKEY_keygen(pkey_ctx, &key) <= 0) {
+      std::cerr << "EVP_PKEY_keygen error" << std::endl;
+    }
+
+    EVP_PKEY_CTX_free(pkey_ctx);
+
+    X509 *x509 = X509_new();
+    X509_set_version(x509, 2);
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
+    X509_gmtime_adj(X509_get_notBefore(x509), 0);
+    X509_gmtime_adj(X509_get_notAfter(x509), 31536000L);
+    X509_set_pubkey(x509, key);
+
+    X509_NAME *name = X509_get_subject_name(x509);
+    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (unsigned char *)"US",
+                               -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                               (unsigned char *)"localhost", -1, -1, 0);
+
+    X509_set_issuer_name(x509, name);
+
+    if (X509_sign(x509, key, EVP_sha256()) == 0) {
+      std::cerr << "x509 signing error" << std::endl;
+    }
+
+    if (SSL_CTX_use_certificate(ssl_ctx, x509) <= 0 ||
+        SSL_CTX_use_PrivateKey(ssl_ctx, key) <= 0) {
+      std::cerr << "SSL_CTX_use_certificate or SSL_CTX_use_PrivateKey error"
+                << std::endl;
+    }
+
+    X509_free(x509);
+    EVP_PKEY_free(key);
+
     return true;
   }
 
@@ -110,6 +157,13 @@ struct ssl_socket {
         ::accept(sockfd, (sockaddr *)&client_addr, &client_len);
     if (client_socket.sockfd == -1) {
       std::cerr << "Accept failed" << std::endl;
+    }
+
+    client_socket.ssl = SSL_new(ssl_ctx);
+    SSL_set_fd(client_socket.ssl, client_socket.sockfd);
+    if (SSL_accept(client_socket.ssl) <= 0) {
+      std::cerr << "SSL_accept error" << std::endl;
+      client_socket.close();
     }
 
     return client_socket;
@@ -131,7 +185,7 @@ struct ssl_socket {
 
     // Initiate ssl part
     SSL_library_init();
-    ssl_ctx = SSL_CTX_new(SSLv23_method());
+    ssl_ctx = SSL_CTX_new(SSLv23_client_method());
     ssl = SSL_new(ssl_ctx);
     SSL_set_fd(ssl, sockfd);
     SSL_connect(ssl);
@@ -181,7 +235,7 @@ struct ssl_socket {
       const auto begin =
           std::addressof(*(std::begin(buffer) + total_bytes_read));
       const std::size_t left = std::size(buffer) - total_bytes_read;
-      ssize_t bytes_read = ::recv(sockfd, begin, left, 0);
+      ssize_t bytes_read = SSL_read(ssl, begin, left);
       if (bytes_read == -1) {
         std::cerr << "Failed to receive data." << std::endl;
         return -1;
@@ -208,11 +262,19 @@ struct ssl_socket {
   }
 
   void close() {
-
     // Shutdown SSL
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
-    SSL_CTX_free(ssl_ctx);
+    if (ssl) {
+      SSL_shutdown(ssl);
+      SSL_free(ssl);
+    }
+
+    if (ssl_ctx) {
+      SSL_CTX_free(ssl_ctx);
+    }
+
+    EVP_cleanup();
+    ERR_free_strings();
+    CRYPTO_cleanup_all_ex_data();
 
     if (sockfd != -1) {
 #ifdef _WIN32
