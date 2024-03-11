@@ -103,14 +103,14 @@ struct udp_socket {
   }
 
   template <typename Container>
-  ssize_t send(const Container &data, const endpoint &to) {
+  ssize_t send(const Container &data, const endpoint &to, int flags) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
     }
 
     ssize_t bytes_sent = ::sendto(sockfd, std::data(data), std::size(data),
-                                  MSG_CONFIRM, &to.addr, to.addrlen);
+                                  flags, &to.addr, to.addrlen);
     if (bytes_sent == -1) {
       std::cerr << "Failed to send data." << std::endl;
       return -1;
@@ -120,14 +120,14 @@ struct udp_socket {
   }
 
   template <typename Container>
-  ssize_t receive(Container &buffer, endpoint &from) {
+  ssize_t receive(Container &buffer, endpoint &from, int flags) {
     if (sockfd == -1) {
       std::cerr << "Socket not connected." << std::endl;
       return -1;
     }
 
     ssize_t bytes_read =
-        ::recvfrom(sockfd, std::data(buffer), std::size(buffer), MSG_DONTWAIT,
+        ::recvfrom(sockfd, std::data(buffer), std::size(buffer), flags,
                    &from.addr, &from.addrlen);
     if (bytes_read == -1) {
       std::cerr << "Failed to receive data." << std::endl;
@@ -135,6 +135,43 @@ struct udp_socket {
     }
 
     return bytes_read;
+  }
+
+  template <typename Container>
+  ssize_t receive_some(Container &buffer, endpoint &from) {
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < std::size(buffer)) {
+      if (sockfd == -1) {
+        std::cerr << "Socket not connected." << std::endl;
+        return -1;
+      }
+
+      const auto begin =
+          std::addressof(*(std::begin(buffer) + total_bytes_read));
+      const std::size_t left = std::size(buffer) - total_bytes_read;
+
+      ssize_t bytes_read =
+          ::recvfrom(sockfd, begin, left, &from.addr, &from.addrlen);
+      if (bytes_read == -1) {
+        std::cerr << "Failed to receive data." << std::endl;
+        return -1;
+      } else if (bytes_read > 0)
+        total_bytes_read += bytes_read;
+    }
+
+    return total_bytes_read;
+  }
+
+  template <typename T> ssize_t receive_into(T &obj) {
+    union var {
+      T obj;
+      std::array<std::byte, sizeof(T)> bytes;
+    };
+
+    var v;
+    ssize_t len = receive_some(v.bytes);
+    obj = v.obj;
+    return len;
   }
 
   void close() {

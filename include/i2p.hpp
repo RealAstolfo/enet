@@ -76,6 +76,7 @@ struct i2p_resolver {
 
 struct i2p_socket {
   std::shared_ptr<i2p::stream::Stream> stream;
+
   bool connect(const std::string &b64, const uint16_t port) {
     i2p::data::IdentityEx ident;
     ident.FromBase64(b64);
@@ -86,9 +87,9 @@ struct i2p_socket {
     return true;
   }
 
-  ssize_t send(const std::string_view &data) {
+  template <typename Container> ssize_t send(const Container &data) {
     ssize_t bytes_sent = stream->Send(
-        reinterpret_cast<const uint8_t *>(data.data()), data.size());
+        reinterpret_cast<const uint8_t *>(std::data(data)), std::size(data));
     if (bytes_sent == -1) {
       std::cerr << "Failed to send data." << std::endl;
       return -1;
@@ -99,16 +100,16 @@ struct i2p_socket {
     return bytes_sent;
   }
 
-  ssize_t receive(std::array<char, 4096> &buffer) {
+  template <typename Container> ssize_t receive(Container &buffer) {
     ssize_t bytes_read = 0;
     if (stream->GetStatus() == i2p::stream::eStreamStatusNew ||
         stream->GetStatus() == i2p::stream::eStreamStatusOpen) {
       bytes_read =
-          stream->Receive(reinterpret_cast<uint8_t *>(buffer.data()),
-                          buffer.size(), std::numeric_limits<int>::max());
+          stream->Receive(reinterpret_cast<uint8_t *>(std::data(buffer)),
+                          std::size(buffer), std::numeric_limits<int>::max());
     } else {
-      bytes_read = stream->ReadSome(reinterpret_cast<uint8_t *>(buffer.data()),
-                                    buffer.size());
+      bytes_read = stream->ReadSome(
+          reinterpret_cast<uint8_t *>(std::data(buffer)), std::size(buffer));
     }
 
     if (bytes_read == -1) {
@@ -117,6 +118,44 @@ struct i2p_socket {
     }
 
     return bytes_read;
+  }
+
+  template <typename Container> ssize_t receive_some(Container &buffer) {
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < std::size(buffer)) {
+      ssize_t bytes_read = 0;
+      const auto begin =
+          std::addressof(*(std::begin(buffer) + total_bytes_read));
+      const std::size_t left = std::size(buffer) - total_bytes_read;
+
+      if (stream->GetStatus() == i2p::stream::eStreamStatusNew ||
+          stream->GetStatus() == i2p::stream::eStreamStatusOpen) {
+        bytes_read = stream->Receive(reinterpret_cast<uint8_t *>(begin), left,
+                                     std::numeric_limits<int>::max());
+      } else {
+        bytes_read = stream->ReadSome(reinterpret_cast<uint8_t *>(begin), left);
+      }
+
+      if (bytes_read == -1) {
+        std::cerr << "Failed to receive data." << std::endl;
+        return -1;
+      } else if (bytes_read > 0)
+        total_bytes_read += bytes_read;
+    }
+
+    return total_bytes_read;
+  }
+
+  template <typename T> ssize_t receive_into(T &obj) {
+    union var {
+      T obj;
+      std::array<std::byte, sizeof(T)> bytes;
+    };
+
+    var v;
+    ssize_t len = receive_some(v.bytes);
+    obj = v.obj;
+    return len;
   }
 
   void close() { stream->Close(); }

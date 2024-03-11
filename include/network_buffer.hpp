@@ -22,7 +22,7 @@ template <typename Header> struct network_buffer {
 
   struct network_packet {
     Header header;
-    buffer data;
+    std::byte *data;
   };
 
   template <typename Container> void add_data(Container &data) {
