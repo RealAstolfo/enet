@@ -153,7 +153,7 @@ template <typename Container> ssize_t http_socket::post(const Container &data) {
   }
 
   ssize_t sent_bytes = internal.send(request_final);
-  if (sent_bytes < request_final.length())
+  if (sent_bytes < (ssize_t)request_final.length())
     std::cerr << "Error: Incomplete send" << std::endl;
 
   return sent_bytes;
