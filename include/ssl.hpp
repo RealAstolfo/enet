@@ -74,7 +74,7 @@ struct ssl_socket {
   SSL *ssl;
   SSL_CTX *ssl_ctx;
 
-  ssl_socket() : sockfd(-1) {}
+  ssl_socket() : sockfd(-1), ssl(nullptr), ssl_ctx(nullptr) {}
 
   bool bind(const endpoint ep) {
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -170,6 +170,11 @@ struct ssl_socket {
   }
 
   bool connect(const endpoint ep) {
+    if (sockfd != -1) {
+      std::cerr << "Socket is already connected." << std::endl;
+      return false;
+    }
+
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd == -1) {
       std::cerr << "Failed to create socket." << std::endl;
@@ -184,6 +189,7 @@ struct ssl_socket {
     }
 
     // Initiate ssl part
+
     SSL_library_init();
     ssl_ctx = SSL_CTX_new(SSLv23_client_method());
     ssl = SSL_new(ssl_ctx);
