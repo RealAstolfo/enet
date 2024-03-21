@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 
@@ -25,7 +26,7 @@ struct http_socket {
   tcp_socket internal;
   endpoint cached;
   // network buffer, fills when receiving, so i can abstract away the http later
-  std::string buffer;
+  std::vector<std::byte> buffer;
 
   bool bind(const endpoint &ep) { return internal.bind(ep); }
   bool listen(const int max_incoming_connections) {
@@ -148,7 +149,7 @@ struct http_socket {
   }
 
   template <typename Container> ssize_t receive(Container &data) {
-    std::array<char, 4096> receive_buffer;
+    std::array<std::byte, 4096> receive_buffer;
 
     ssize_t bytes = 0;
     size_t header_end;
@@ -157,12 +158,18 @@ struct http_socket {
       if (bytes < 0)
         break;
 
-      buffer.append(std::data(receive_buffer), bytes);
-      header_end = buffer.find("\r\n\r\n");
+      std::move(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+                std::back_inserter(buffer));
+
+      const std::string_view view(
+          reinterpret_cast<const char *>(std::data(buffer)), std::size(buffer));
+      header_end = view.find("\r\n\r\n");
     } while (header_end == std::string::npos);
 
     bool should_close = false;
-    std::string headers = buffer.substr(0, buffer.find("\r\n\r\n"));
+    std::string_view view(reinterpret_cast<const char *>(std::data(buffer)),
+                          std::size(buffer));
+    std::string_view headers = view.substr(0, view.find("\r\n\r\n"));
 
     size_t connection_pos = headers.find("Connection:");
     if (connection_pos == std::string::npos) {
@@ -180,29 +187,33 @@ struct http_socket {
           headers.find_first_not_of(" \t", content_length_pos + 15);
       size_t val_end = headers.find("\r\n", val_start);
       if (val_end != std::string::npos)
-        content_length =
-            std::stoul(headers.substr(val_start, val_end - val_start));
+        content_length = std::stoul(
+            std::string(headers.substr(val_start, val_end - val_start)));
     }
 
-    while (buffer.length() - header_end - 4 < content_length) {
+    while (std::size(buffer) - header_end - 4 < content_length) {
       bytes = internal.receive(receive_buffer);
       if (bytes < 0)
         break;
-      buffer.append(std::data(receive_buffer), bytes);
+      std::move(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+                std::back_inserter(buffer));
     }
 
+    view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
+                            std::size(buffer));
     // Assuming the content starts right after the "\r\n\r\n"
-    std::string content = buffer.substr(header_end + 4);
+    std::string_view content = view.substr(header_end + 4);
     // Assuming the response content is represented in hex format
     for (size_t i = 0; i < content.length(); i += 2) {
-      std::string byte_str = content.substr(i, 2);
+      std::string_view byte_str = content.substr(i, 2);
       data[i / 2] = static_cast<typename Container::value_type>(
-          std::stoi(byte_str, nullptr, 16));
+          std::stoi(std::string(byte_str), nullptr, 16));
     }
 
     // erase content from the buffer we just read, this will make any extra bits
     // we read left for the next read
-    buffer.erase(0, header_end + content_length + 4);
+    buffer.erase(std::begin(buffer),
+                 std::begin(buffer) + header_end + content_length + 4);
 
     if (should_close)
       internal.close();
