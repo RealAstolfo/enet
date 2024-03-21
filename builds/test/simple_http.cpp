@@ -28,20 +28,12 @@ int main(int argc, char **argv) {
 
   std::cout << "Host: " << host << " URI: " << uri << std::endl;
   http_socket hs;
-  hs.connect(ips);
+  hs.connect(ips[0]);
 
   if (uri.empty())
     uri += '/';
-  std::ostringstream request_stream;
-  request_stream << "GET " << uri << " HTTP/1.1\r\n"
-                 << "Host: " << host << "\r\n"
-                 << "Accept: */*\r\n"
-                 << "Connection: close\r\n\r\n";
+  auto response = hs.get(uri);
 
-  std::string request = request_stream.str();
-
-  auto response = hs.request(request);
-  hs.close();
   std::cout << response << std::endl;
   return EXIT_SUCCESS;
 }

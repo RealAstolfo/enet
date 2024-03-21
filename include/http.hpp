@@ -2,10 +2,13 @@
 #define HTTP_HPP
 
 #include <array>
+#include <cstddef>
+#include <iomanip>
 #include <iostream>
-#include <streambuf>
+#include <sstream>
 #include <string>
 
+#include "endpoint.hpp"
 #include "tcp.hpp"
 
 struct http_resolver {
@@ -20,30 +23,217 @@ http_resolver::resolve(const std::string &host, const std::string &service) {
 
 struct http_socket {
   tcp_socket internal;
-  std::string write_buffer;
+  endpoint cached;
 
-  void connect(const std::vector<endpoint> &endpoints);
-  std::string request(const std::string &data);
+  bool bind(const endpoint &ep);
+  bool listen(const int max_incoming_connections);
+  http_socket accept();
+  bool connect(const endpoint &ep);
+  std::string get(const std::string &uri);
+  template <typename Container> ssize_t post(const Container &data);
+  template <typename Container> ssize_t receive(Container &data);
+  template <typename Container> ssize_t receive_some(Container &data);
+  template <typename Container> ssize_t receive_into(Container &data);
+
   void close();
 };
 
-void http_socket::connect(const std::vector<endpoint> &endpoints) {
-  internal.connect(*endpoints.begin());
+bool http_socket::bind(const endpoint &ep) { return internal.bind(ep); }
+
+bool http_socket::listen(const int max_incoming_connections) {
+  return internal.listen(max_incoming_connections);
 }
 
-std::string http_socket::request(const std::string &data) {
-  write_buffer = data;
-  internal.send(write_buffer);
+http_socket http_socket::accept() {
+  http_socket hs;
+  hs.internal = internal.accept();
+
+  return hs;
+}
+
+bool http_socket::connect(const endpoint &ep) {
+  cached = ep;
+  return internal.connect(ep);
+}
+
+std::string http_socket::get(const std::string &uri) {
+  if (internal.sockfd == -1)
+    internal.connect(cached);
+
+  std::string request_final;
+  {
+    std::stringstream request;
+    request << "GET " << uri << " HTTP/1.1\r\n";
+    request << "Host: " << cached.canonname << "\r\n";
+    request << "Accept: */*\r\n";
+    request << "Connection: close\r\n";
+    request << "\r\n";
+
+    // move data, prevents copying.
+    request_final = std::move(request).str();
+  }
+
+  ssize_t sent_bytes = internal.send(request_final);
+  if (sent_bytes < 0) {
+    std::cerr << "Error sending data" << std::endl;
+    return 0;
+  }
+
   std::string response;
   std::array<char, 4096> receive_buffer;
 
-  std::size_t bytes = 0;
+  ssize_t bytes = 0;
+  size_t header_end;
   do {
     bytes = internal.receive(receive_buffer);
-    response.append(receive_buffer.data(), bytes);
+    if (bytes < 0)
+      break;
+    response.append(std::data(receive_buffer), bytes);
+    header_end = response.find("\r\n\r\n");
+  } while (header_end == std::string::npos);
+
+  bool should_close = false;
+  std::string headers = response.substr(0, response.find("\r\n\r\n"));
+
+  size_t connection_pos = headers.find("Connection:");
+  if (connection_pos == std::string::npos) {
+    size_t val_start = headers.find_first_not_of(" \t", connection_pos + 10);
+    size_t val_end = headers.find("\r\n", val_start);
+    if (val_end != std::string::npos)
+      if (headers.substr(val_start, val_end - val_start) == "close")
+        should_close = true;
+  }
+
+  do {
+    bytes = internal.receive(receive_buffer);
+    response.append(std::data(receive_buffer), bytes);
   } while (bytes > 0);
 
-  return response;
+  if (should_close)
+    internal.close();
+
+  return response.substr(header_end + 4);
+}
+
+template <typename Container> ssize_t http_socket::post(const Container &data) {
+  if (internal.sockfd == -1)
+    internal.connect(cached);
+
+  std::string byte_stream_final;
+  {
+    std::stringstream byte_stream;
+    // convert std::byte to a string representation.
+    for (const auto &byte : data)
+      byte_stream << std::hex << std::setw(2) << std::setfill('0')
+                  << static_cast<int>(byte);
+
+    // move data, prevents copying.
+    byte_stream_final = std::move(byte_stream).str();
+  }
+
+  std::string request_final;
+  {
+    std::stringstream request;
+    request << "POST "
+            << "/"
+            << " HTTP/1.1\r\n";
+    request << "Host: " << cached.canonname << "\r\n";
+    request << "Content-Type: application/octet-stream\r\n";
+    request << "Content-Length: " << byte_stream_final.length() << "\r\n";
+
+    // always try to keep connection, will still close if server says to.
+    request << "Connection: Keep-Alive\r\n";
+    request << "\r\n";
+
+    // move data, prevents copying.
+    request << std::move(byte_stream_final);
+
+    // move data, prevents copying.
+    request_final = std::move(request).str();
+  }
+
+  ssize_t sent_bytes = internal.send(request_final);
+  if (sent_bytes < request_final.length())
+    std::cerr << "Error: Incomplete send" << std::endl;
+
+  return sent_bytes;
+}
+
+template <typename Container> ssize_t http_socket::receive(Container &data) {
+  std::string response;
+  std::array<char, 4096> receive_buffer;
+
+  size_t bytes = 0;
+  size_t header_end;
+  do {
+    bytes = internal.receive(receive_buffer);
+    if (bytes < 0)
+      break;
+    response.append(std::data(receive_buffer), bytes);
+    header_end = response.find("\r\n\r\n");
+  } while (header_end == std::string::npos);
+
+  bool should_close = false;
+  std::string headers = response.substr(0, response.find("\r\n\r\n"));
+
+  size_t connection_pos = headers.find("Connection:");
+  if (connection_pos == std::string::npos) {
+    size_t val_start = headers.find_first_not_of(" \t", connection_pos + 10);
+    size_t val_end = headers.find("\r\n", val_start);
+    if (val_end != std::string::npos)
+      if (headers.substr(val_start, val_end - val_start) == "close")
+        should_close = true;
+  }
+
+  // Parsing Content-Length header to determine how many more bytes to read
+  size_t content_length = 0;
+  size_t content_length_pos = headers.find("Content-Length:");
+  if (content_length_pos != std::string::npos) {
+    size_t val_start =
+        headers.find_first_not_of(" \t", content_length_pos + 15);
+    size_t val_end = headers.find("\r\n", val_start);
+    if (val_end != std::string::npos)
+      content_length =
+          std::stoul(headers.substr(val_start, val_end - val_start));
+  }
+
+  // Continue reading until we have read the entire content
+  while (response.length() - header_end - 4 < content_length) {
+    bytes = internal.receive(receive_buffer);
+    if (bytes < 0)
+      break;
+    response.append(std::data(receive_buffer), bytes);
+  }
+
+  if (header_end != std::string::npos && header_end + 4 < response.length()) {
+    // Assuming the content starts right after the "\r\n\r\n"
+    std::string content = response.substr(header_end + 4);
+    // Assuming the response content is represented in hex format
+    for (size_t i = 0; i < content.length(); i += 2) {
+      std::string byte_str = content.substr(i, 2);
+      data.push_back(static_cast<typename Container::value_type>(
+          std::stoi(byte_str, nullptr, 16)));
+    }
+  }
+
+  if (should_close)
+    internal.close();
+
+  return std::size(data);
+}
+
+// may not need to implement receive_some, since i should have all the data from
+// the normal response, and theres no real way to recover the missing data.
+template <typename T> ssize_t receive_into(T &obj) {
+  union var {
+    T obj;
+    std::array<std::byte, sizeof(T)> bytes;
+  };
+
+  var v;
+  ssize_t len = receive(v.bytes);
+  obj = v.obj;
+  return len;
 }
 
 void http_socket::close() { internal.close(); }
