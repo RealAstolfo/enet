@@ -24,6 +24,8 @@ http_resolver::resolve(const std::string &host, const std::string &service) {
 struct http_socket {
   tcp_socket internal;
   endpoint cached;
+  // network buffer, fills when receiving, so i can abstract away the http later
+  std::string buffer;
 
   bool bind(const endpoint &ep);
   bool listen(const int max_incoming_connections);
@@ -160,21 +162,21 @@ template <typename Container> ssize_t http_socket::post(const Container &data) {
 }
 
 template <typename Container> ssize_t http_socket::receive(Container &data) {
-  std::string response;
   std::array<char, 4096> receive_buffer;
 
-  size_t bytes = 0;
+  ssize_t bytes = 0;
   size_t header_end;
   do {
     bytes = internal.receive(receive_buffer);
     if (bytes < 0)
       break;
-    response.append(std::data(receive_buffer), bytes);
-    header_end = response.find("\r\n\r\n");
+
+    buffer.append(std::data(receive_buffer), bytes);
+    header_end = buffer.find("\r\n\r\n");
   } while (header_end == std::string::npos);
 
   bool should_close = false;
-  std::string headers = response.substr(0, response.find("\r\n\r\n"));
+  std::string headers = buffer.substr(0, buffer.find("\r\n\r\n"));
 
   size_t connection_pos = headers.find("Connection:");
   if (connection_pos == std::string::npos) {
@@ -185,7 +187,6 @@ template <typename Container> ssize_t http_socket::receive(Container &data) {
         should_close = true;
   }
 
-  // Parsing Content-Length header to determine how many more bytes to read
   size_t content_length = 0;
   size_t content_length_pos = headers.find("Content-Length:");
   if (content_length_pos != std::string::npos) {
@@ -197,24 +198,25 @@ template <typename Container> ssize_t http_socket::receive(Container &data) {
           std::stoul(headers.substr(val_start, val_end - val_start));
   }
 
-  // Continue reading until we have read the entire content
-  while (response.length() - header_end - 4 < content_length) {
+  while (buffer.length() - header_end - 4 < content_length) {
     bytes = internal.receive(receive_buffer);
     if (bytes < 0)
       break;
-    response.append(std::data(receive_buffer), bytes);
+    buffer.append(std::data(receive_buffer), bytes);
   }
 
-  if (header_end != std::string::npos && header_end + 4 < response.length()) {
-    // Assuming the content starts right after the "\r\n\r\n"
-    std::string content = response.substr(header_end + 4);
-    // Assuming the response content is represented in hex format
-    for (size_t i = 0; i < content.length(); i += 2) {
-      std::string byte_str = content.substr(i, 2);
-      data.push_back(static_cast<typename Container::value_type>(
-          std::stoi(byte_str, nullptr, 16)));
-    }
+  // Assuming the content starts right after the "\r\n\r\n"
+  std::string content = buffer.substr(header_end + 4);
+  // Assuming the response content is represented in hex format
+  for (size_t i = 0; i < content.length(); i += 2) {
+    std::string byte_str = content.substr(i, 2);
+    data[i / 2] = static_cast<typename Container::value_type>(
+        std::stoi(byte_str, nullptr, 16));
   }
+
+  // erase content from the buffer we just read, this will make any extra bits
+  // we read left for the next read
+  buffer.erase(0, header_end + content_length + 4);
 
   if (should_close)
     internal.close();
