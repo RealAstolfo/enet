@@ -114,9 +114,12 @@ struct http_socket {
     std::string byte_stream_final;
     {
       std::ostringstream byte_stream;
-      for (const auto &byte : data)
-        byte_stream << std::hex << std::setw(2) << std::setfill('0')
-                    << static_cast<int>(byte);
+      {
+        zstream compressor(&byte_stream);
+        for (const auto &byte : data)
+          compressor << std::hex << std::setw(2) << std::setfill('0')
+                     << static_cast<int>(byte);
+      }
       // move data, prevents copying.
       byte_stream_final = std::move(byte_stream).str();
     }
@@ -199,7 +202,7 @@ struct http_socket {
 
     std::string content;
     {
-      std::string compressed_content = std::string(view);
+      std::string compressed_content = std::string(view.substr(header_end + 4));
       std::istringstream content_stream(std::move(compressed_content));
       zstream decompressor(&content_stream);
       decompressor >> content;
@@ -273,12 +276,18 @@ struct http_socket {
     view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
                             std::size(buffer));
 
-    std::string_view content = view.substr(header_end + 4);
+    std::string content;
+    {
+      std::string compressed_content = std::string(view.substr(header_end + 4));
+      std::istringstream content_stream(std::move(compressed_content));
+      zstream decompressor(&content_stream);
+      decompressor >> content;
+    }
 
     data.resize(content.length() / 2);
     for (size_t i = 0; i < content.length(); i += 2) {
-      data[i / 2] = static_cast<std::byte>(
-          std::stoi(std::string(content.substr(i, 2)), nullptr, 16));
+      data[i / 2] =
+          static_cast<std::byte>(std::stoi(content.substr(i, 2), nullptr, 16));
     }
 
     buffer.erase(std::begin(buffer),
@@ -295,10 +304,13 @@ struct http_socket {
     std::string byte_stream_final;
     {
       std::ostringstream byte_stream;
-      // convert std::byte to a string representation.
-      for (const auto &byte : data)
-        byte_stream << std::hex << std::setw(2) << std::setfill('0')
-                    << static_cast<int>(byte);
+      {
+        zstream compressor(&byte_stream);
+        // convert std::byte to a string representation.
+        for (const auto &byte : data)
+          compressor << std::hex << std::setw(2) << std::setfill('0')
+                     << static_cast<int>(byte);
+      }
       // move data, prevents copying.
       byte_stream_final = std::move(byte_stream).str();
     }
