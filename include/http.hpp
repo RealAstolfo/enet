@@ -12,6 +12,7 @@
 
 #include "endpoint.hpp"
 #include "tcp.hpp"
+#include "zstream.hpp"
 
 struct http_resolver {
   tcp_resolver internal;
@@ -112,12 +113,10 @@ struct http_socket {
 
     std::string byte_stream_final;
     {
-      std::stringstream byte_stream;
-      // convert std::byte to a string representation.
+      std::ostringstream byte_stream;
       for (const auto &byte : data)
         byte_stream << std::hex << std::setw(2) << std::setfill('0')
                     << static_cast<int>(byte);
-
       // move data, prevents copying.
       byte_stream_final = std::move(byte_stream).str();
     }
@@ -125,7 +124,9 @@ struct http_socket {
     std::string request_final;
     {
       std::stringstream request;
-      request << "POST " << "/" << " HTTP/1.1\r\n";
+      request << "POST "
+              << "/"
+              << " HTTP/1.1\r\n";
       request << "Host: " << cached.canonname << "\r\n";
       request << "Content-Type: application/octet-stream\r\n";
       request << "Content-Length: " << byte_stream_final.length() << "\r\n";
@@ -195,11 +196,19 @@ struct http_socket {
 
     view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
                             std::size(buffer));
-    std::string_view content = view.substr(header_end + 4);
+
+    std::string content;
+    {
+      std::string compressed_content = std::string(view);
+      std::istringstream content_stream(std::move(compressed_content));
+      zstream decompressor(&content_stream);
+      decompressor >> content;
+    }
+
+    std::vector<std::byte> out(content.length() / 2);
     for (size_t i = 0; i < content.length(); i += 2) {
-      std::string_view byte_str = content.substr(i, 2);
-      data[i / 2] = static_cast<typename Container_Out::value_type>(
-          std::stoi(std::string(byte_str), nullptr, 16));
+      out[i / 2] = static_cast<typename Container_Out::value_type>(
+          std::stoi(std::string(content.substr(i, 2)), nullptr, 16));
     }
 
     buffer.erase(std::begin(buffer),
@@ -208,11 +217,10 @@ struct http_socket {
     if (should_close)
       internal.close();
 
-    return std::size(data);
+    return out;
   }
 
-  template <typename Container_In, typename Container_Out>
-  Container_Out respond(const Container_In &data_in) {
+  template <typename Container> void receive(Container &data) {
     ssize_t bytes = 0;
     std::string_view view(reinterpret_cast<const char *>(std::data(buffer)),
                           std::size(buffer));
@@ -262,17 +270,35 @@ struct http_socket {
                 std::back_inserter(buffer));
     }
 
+    view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
+                            std::size(buffer));
+
+    std::string_view content = view.substr(header_end + 4);
+
+    data.resize(content.length() / 2);
+    for (size_t i = 0; i < content.length(); i += 2) {
+      data[i / 2] = static_cast<std::byte>(
+          std::stoi(std::string(content.substr(i, 2)), nullptr, 16));
+    }
+
+    buffer.erase(std::begin(buffer),
+                 std::begin(buffer) + header_end + content_length + 4);
+
+    if (should_close)
+      internal.close();
+  }
+
+  template <typename Container> void respond(const Container &data) {
     if (internal.sockfd == -1)
       internal.connect(cached);
 
     std::string byte_stream_final;
     {
-      std::stringstream byte_stream;
+      std::ostringstream byte_stream;
       // convert std::byte to a string representation.
-      for (const auto &byte : data_in)
+      for (const auto &byte : data)
         byte_stream << std::hex << std::setw(2) << std::setfill('0')
                     << static_cast<int>(byte);
-
       // move data, prevents copying.
       byte_stream_final = std::move(byte_stream).str();
     }
@@ -295,27 +321,9 @@ struct http_socket {
       response_final = std::move(response).str();
     }
 
-    bytes = internal.send(response_final);
+    ssize_t bytes = internal.send(response_final);
     if (bytes < (ssize_t)response_final.length())
       std::cerr << "Error: Incomplete send" << std::endl;
-
-    view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
-                            std::size(buffer));
-    std::string_view content = view.substr(header_end + 4);
-    Container_Out data(content.length() / 2);
-    for (size_t i = 0; i < content.length(); i += 2) {
-      std::string_view byte_str = content.substr(i, 2);
-      data[i / 2] =
-          static_cast<std::byte>(std::stoi(std::string(byte_str), nullptr, 16));
-    }
-
-    buffer.erase(std::begin(buffer),
-                 std::begin(buffer) + header_end + content_length + 4);
-
-    if (should_close)
-      internal.close();
-
-    return data;
   }
 
   template <typename T_in, typename T_out> T_out request_into(const T_in &obj) {
