@@ -8,6 +8,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include "endpoint.hpp"
 #include "tcp.hpp"
@@ -104,7 +105,8 @@ struct http_socket {
     return response.substr(header_end + 4);
   }
 
-  template <typename Container> ssize_t post(const Container &data) {
+  template <typename Container_In, typename Container_Out>
+  Container_Out request(const Container_In &data) {
     if (internal.sockfd == -1)
       internal.connect(cached);
 
@@ -123,9 +125,7 @@ struct http_socket {
     std::string request_final;
     {
       std::stringstream request;
-      request << "POST "
-              << "/"
-              << " HTTP/1.1\r\n";
+      request << "POST " << "/" << " HTTP/1.1\r\n";
       request << "Host: " << cached.canonname << "\r\n";
       request << "Content-Type: application/octet-stream\r\n";
       request << "Content-Length: " << byte_stream_final.length() << "\r\n";
@@ -141,35 +141,29 @@ struct http_socket {
       request_final = std::move(request).str();
     }
 
-    ssize_t sent_bytes = internal.send(request_final);
-    if (sent_bytes < (ssize_t)request_final.length())
+    ssize_t bytes = internal.send(request_final);
+    if (bytes < (ssize_t)request_final.length())
       std::cerr << "Error: Incomplete send" << std::endl;
 
-    return sent_bytes;
-  }
-
-  template <typename Container> ssize_t receive(Container &data) {
+    std::string_view view(reinterpret_cast<const char *>(std::data(buffer)),
+                          std::size(buffer));
     std::array<std::byte, 4096> receive_buffer;
 
-    ssize_t bytes = 0;
-    size_t header_end;
-    do {
+    size_t header_end = view.find("\r\n\r\n");
+    while (header_end == std::string::npos) {
       bytes = internal.receive(receive_buffer);
       if (bytes < 0)
         break;
-
-      std::move(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+      std::copy(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
                 std::back_inserter(buffer));
 
-      const std::string_view view(
-          reinterpret_cast<const char *>(std::data(buffer)), std::size(buffer));
+      view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
+                              std::size(buffer));
       header_end = view.find("\r\n\r\n");
-    } while (header_end == std::string::npos);
+    }
 
+    std::string_view headers = view.substr(0, header_end);
     bool should_close = false;
-    std::string_view view(reinterpret_cast<const char *>(std::data(buffer)),
-                          std::size(buffer));
-    std::string_view headers = view.substr(0, view.find("\r\n\r\n"));
 
     size_t connection_pos = headers.find("Connection:");
     if (connection_pos == std::string::npos) {
@@ -195,23 +189,19 @@ struct http_socket {
       bytes = internal.receive(receive_buffer);
       if (bytes < 0)
         break;
-      std::move(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+      std::copy(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
                 std::back_inserter(buffer));
     }
 
     view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
                             std::size(buffer));
-    // Assuming the content starts right after the "\r\n\r\n"
     std::string_view content = view.substr(header_end + 4);
-    // Assuming the response content is represented in hex format
     for (size_t i = 0; i < content.length(); i += 2) {
       std::string_view byte_str = content.substr(i, 2);
-      data[i / 2] = static_cast<typename Container::value_type>(
+      data[i / 2] = static_cast<typename Container_Out::value_type>(
           std::stoi(std::string(byte_str), nullptr, 16));
     }
 
-    // erase content from the buffer we just read, this will make any extra bits
-    // we read left for the next read
     buffer.erase(std::begin(buffer),
                  std::begin(buffer) + header_end + content_length + 4);
 
@@ -221,16 +211,147 @@ struct http_socket {
     return std::size(data);
   }
 
-  template <typename T> ssize_t receive_into(T &obj) {
-    union var {
-      T obj;
-      std::array<std::byte, sizeof(T)> bytes;
+  template <typename Container_In, typename Container_Out>
+  Container_Out respond(const Container_In &data_in) {
+    ssize_t bytes = 0;
+    std::string_view view(reinterpret_cast<const char *>(std::data(buffer)),
+                          std::size(buffer));
+    std::array<std::byte, 4096> receive_buffer;
+
+    size_t header_end = view.find("\r\n\r\n");
+    while (header_end == std::string::npos) {
+      bytes = internal.receive(receive_buffer);
+      if (bytes < 0)
+        break;
+      std::copy(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+                std::back_inserter(buffer));
+
+      view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
+                              std::size(buffer));
+      header_end = view.find("\r\n\r\n");
+    }
+
+    std::string_view headers = view.substr(0, header_end);
+    bool should_close = false;
+
+    size_t connection_pos = headers.find("Connection:");
+    if (connection_pos == std::string::npos) {
+      size_t val_start = headers.find_first_not_of(" \t", connection_pos + 10);
+      size_t val_end = headers.find("\r\n", val_start);
+      if (val_end != std::string::npos)
+        if (headers.substr(val_start, val_end - val_start) == "close")
+          should_close = true;
+    }
+
+    size_t content_length = 0;
+    size_t content_length_pos = headers.find("Content-Length:");
+    if (content_length_pos != std::string::npos) {
+      size_t val_start =
+          headers.find_first_not_of(" \t", content_length_pos + 15);
+      size_t val_end = headers.find("\r\n", val_start);
+      if (val_end != std::string::npos)
+        content_length = std::stoul(
+            std::string(headers.substr(val_start, val_end - val_start)));
+    }
+
+    while (std::size(buffer) - header_end - 4 < content_length) {
+      bytes = internal.receive(receive_buffer);
+      if (bytes < 0)
+        break;
+      std::copy(std::begin(receive_buffer), std::begin(receive_buffer) + bytes,
+                std::back_inserter(buffer));
+    }
+
+    if (internal.sockfd == -1)
+      internal.connect(cached);
+
+    std::string byte_stream_final;
+    {
+      std::stringstream byte_stream;
+      // convert std::byte to a string representation.
+      for (const auto &byte : data_in)
+        byte_stream << std::hex << std::setw(2) << std::setfill('0')
+                    << static_cast<int>(byte);
+
+      // move data, prevents copying.
+      byte_stream_final = std::move(byte_stream).str();
+    }
+
+    std::string response_final;
+    {
+      std::stringstream response;
+      response << "HTTP/1.1 200 OK\r\n";
+      response << "Content-Type: application/octet-stream\r\n";
+      response << "Content-Length: " << byte_stream_final.length() << "\r\n";
+
+      // always try to keep connection, will still close if server says to.
+      response << "Connection: Keep-Alive\r\n";
+      response << "\r\n";
+
+      // move data, prevents copying.
+      response << std::move(byte_stream_final);
+
+      // move data, prevents copying.
+      response_final = std::move(response).str();
+    }
+
+    bytes = internal.send(response_final);
+    if (bytes < (ssize_t)response_final.length())
+      std::cerr << "Error: Incomplete send" << std::endl;
+
+    view = std::string_view(reinterpret_cast<const char *>(std::data(buffer)),
+                            std::size(buffer));
+    std::string_view content = view.substr(header_end + 4);
+    Container_Out data(content.length() / 2);
+    for (size_t i = 0; i < content.length(); i += 2) {
+      std::string_view byte_str = content.substr(i, 2);
+      data[i / 2] =
+          static_cast<std::byte>(std::stoi(std::string(byte_str), nullptr, 16));
+    }
+
+    buffer.erase(std::begin(buffer),
+                 std::begin(buffer) + header_end + content_length + 4);
+
+    if (should_close)
+      internal.close();
+
+    return data;
+  }
+
+  template <typename T_in, typename T_out> T_out request_into(const T_in &obj) {
+    union var_in {
+      T_in obj;
+      std::array<std::byte, sizeof(T_in)> bytes;
     };
 
-    var v;
-    ssize_t len = receive(v.bytes);
-    obj = v.obj;
-    return len;
+    union var_out {
+      T_out obj;
+      std::array<std::byte, sizeof(T_out)> bytes;
+    };
+
+    var_in vin = obj;
+    var_out vout;
+
+    vout.bytes = request(vin.bytes);
+    return vout;
+  }
+
+  template <typename T_in, typename T_out> T_out respond_into(const T_in &obj) {
+    union var_in {
+      T_in obj;
+      std::array<std::byte, sizeof(T_in)> bytes;
+    };
+
+    union var_out {
+      T_out obj;
+      std::array<std::byte, sizeof(T_out)> bytes;
+    };
+
+    var_in vin = obj;
+    var_out vout;
+
+    vout.bytes = respond(vin.bytes);
+    return vout;
   }
 
   void close() { internal.close(); }
