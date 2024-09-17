@@ -29,7 +29,7 @@ struct https_socket {
 };
 
 void https_socket::connect(const std::vector<endpoint> &endpoints) {
-  internal.connect(*(endpoints.end() - 1));
+  internal.connect(*(endpoints.begin()));
 }
 
 std::string https_socket::request(const std::string &data) {
