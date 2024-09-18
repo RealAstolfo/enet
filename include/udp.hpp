@@ -162,14 +162,14 @@ struct udp_socket {
     return total_bytes_read;
   }
 
-  template <typename T> ssize_t receive_into(T &obj) {
+  template <typename T> ssize_t receive_into(T &obj, endpoint &from) {
     union var {
       T obj;
       std::array<std::byte, sizeof(T)> bytes;
     };
 
     var v;
-    ssize_t len = receive_some(v.bytes);
+    ssize_t len = receive_some(v.bytes, from);
     obj = v.obj;
     return len;
   }
