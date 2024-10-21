@@ -46,12 +46,12 @@ struct udp_resolver {
     int status;
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;    // IPv4 or IPv6
+    hints.ai_family = AF_UNSPEC;    // IPv4 ----or IPv6
     hints.ai_socktype = SOCK_DGRAM; // UDP socket
 
     std::vector<endpoint> endpoints;
-    if ((status = getaddrinfo(host.c_str(), service.c_str(), &hints, &res)) !=
-        0) {
+    auto *service_str = service.length() ? service.c_str() : nullptr;
+    if ((status = getaddrinfo(host.c_str(), service_str, &hints, &res)) != 0) {
       std::cerr << "getaddrinfo error: " << gai_strerror(status) << std::endl;
       return endpoints;
     }
@@ -69,7 +69,7 @@ struct udp_socket {
   udp_socket() : sockfd(-1) {}
 
   bool bind(const endpoint ep) {
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    sockfd = socket(ep.family, SOCK_DGRAM, 0);
     if (sockfd == -1) {
       std::cerr << "Failed to create socket." << std::endl;
       return false;
@@ -86,7 +86,7 @@ struct udp_socket {
   }
 
   bool connect(const endpoint ep) {
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    sockfd = socket(ep.family, SOCK_DGRAM, 0);
     if (sockfd == -1) {
       std::cerr << "Failed to create socket." << std::endl;
       return false;
@@ -129,11 +129,6 @@ struct udp_socket {
     ssize_t bytes_read =
         ::recvfrom(sockfd, std::data(buffer), std::size(buffer), flags,
                    &from.addr, &from.addrlen);
-    if (bytes_read == -1) {
-      std::cerr << "Failed to receive data." << std::endl;
-      return -1;
-    }
-
     return bytes_read;
   }
 
@@ -153,7 +148,6 @@ struct udp_socket {
       ssize_t bytes_read =
           ::recvfrom(sockfd, begin, left, &from.addr, &from.addrlen);
       if (bytes_read == -1) {
-        std::cerr << "Failed to receive data." << std::endl;
         return -1;
       } else if (bytes_read > 0)
         total_bytes_read += bytes_read;

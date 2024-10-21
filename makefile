@@ -8,8 +8,10 @@ INC = -I./include -I./vendors -I./vendors/exstd/include -I./vendors/i2pd/libi2pd
 LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
 
 I2P = -L./vendors/i2pd -Wl,-Bstatic -li2pd -Wl,-Bdynamic -lssl -lcrypto -lz -lboost_system -lboost_program_options -lboost_filesystem
+MD5 = `pkgconf --cflags --libs libmd`
 
-CFLAGS = -march=native -O3 -g -Wall -Wextra -pedantic $(INC)
+
+CFLAGS = -march=native -O3 -g -Wall -Wextra -pedantic -fsanitize=address $(INC)
 CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 
@@ -84,9 +86,22 @@ network-buffer-test: network-buffer-test.o
 	${CXX} ${CXXFLAGS} $^ -o $@
 
 
-all: http-test https-test i2p-test network-buffer-test
+#########################################################################################
+
+# DHT Client Testing
+#########################################################################################
+dht.o:
+	${CC} ${CFLAGS} -c src/dht.c -o $@
+
+dht-test.o:
+	${CXX} ${CXXFLAGS} -c builds/test/simple_dht.cpp -o $@
+
+dht-test: dht-test.o dht.o
+	${CXX} ${CXXFLAGS} $^ ${MD5} -o $@
+
+all: http-test https-test i2p-test network-buffer-test dht-test
 
 clean:
-	-rm -f http-test https-test i2p-test network-buffer-test *.o
+	-rm -f http-test https-test i2p-test network-buffer-test dht-test *.o
 	make -C vendors/exstd clean
 	make -C vendors/i2pd clean
