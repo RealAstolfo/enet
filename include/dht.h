@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+#include <sys/socket.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,7 +35,9 @@ dht_callback_t(void *closure, int event,
 #define DHT_EVENT_VALUES6 2
 #define DHT_EVENT_SEARCH_DONE 3
 #define DHT_EVENT_SEARCH_DONE6 4
-
+#define DHT_EVENT_CONN_OPN 5
+#define DHT_EVENT_CONN_CLS 6
+  
 extern FILE *dht_debug;
 
 int dht_init(int s, int s6, const unsigned char *id, const unsigned char *v);
@@ -45,6 +48,9 @@ int dht_periodic(const void *buf, size_t buflen,
                  dht_callback_t *callback, void *closure);
 int dht_search(const unsigned char *id, int port, int af,
                dht_callback_t *callback, void *closure);
+
+  int dht_find_node(const unsigned char *target, int af);
+  int dht_get_node(struct sockaddr_storage* ss, const unsigned char *id, int af);
 int dht_nodes(int af,
               int *good_return, int *dubious_return, int *cached_return,
               int *incoming_return);

@@ -31,6 +31,7 @@ THE SOFTWARE.
 /* For memmem. */
 #define _GNU_SOURCE
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -2448,6 +2449,78 @@ dht_insert_node(const unsigned char *id, struct sockaddr *sa, int salen)
 
     n = new_node(id, sa, salen, 0);
     return !!n;
+}
+
+int dht_find_node(const unsigned char *target, int af)
+{
+    struct bucket *b = find_bucket(myid, af);
+    struct bucket *q;
+    struct node* best[8];
+
+    if(b == NULL)
+        return 0;
+
+    q = b;
+    if(q->next && (q->count == 0 || (random() & 7) == 0))
+        q = b->next;
+    if(q->count == 0 || (random() & 7) == 0) {
+        struct bucket *r;
+        r = previous_bucket(b);
+        if(r && r->count > 0)
+            q = r;
+    }
+
+    if(q) {
+        /* Since our node-id is the same in both DHTs, it's probably
+           profitable to query both families. */
+        int want = dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1;
+
+	int count = 0;
+	best[0] = q->nodes;
+	for (struct node* i = q->nodes; i != NULL; i = i->next) {
+	  int cmp = common_bits(i->id, target);
+	  int cmp_best = common_bits(best[0]->id, target);
+	  if (cmp > cmp_best) {
+	    for (int j = 7; j > 0; j--)
+	      best[j] = best[j - 1];
+	    best[0] = i;
+
+	    count++;
+	  }	  
+	}
+	
+	unsigned char tid[4];
+	debugf("Sending find_node.\n");
+	make_tid(tid, "fn", 0);
+	for (int j = 0; j < count; j++)
+	  send_find_node((struct sockaddr*)&best[j]->ss, best[j]->sslen,
+			 tid, 4, target, want,
+			 best[j]->reply_time >= now.tv_sec - 15);
+	//pinged(n, q);
+        return 1;
+    }
+    return 0;
+}
+
+int dht_get_node(struct sockaddr_storage* ss, const unsigned char *id, int af) {
+  struct bucket* b;
+  struct node* n;
+  
+  b = find_bucket(myid, af);
+  if (b == NULL)
+    return 1;
+
+  n = b->nodes;
+  while(n) {
+    if(id_cmp(id, n->id) == 0) {
+      *ss = n->ss;
+      return 0;
+    }
+
+    n = n->next;
+  }
+  
+  return 1;
 }
 
 int

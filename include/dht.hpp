@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -95,6 +96,20 @@ struct dht_service {
 
   ~dht_service() { dht_uninit(); }
 
+  int ping_node(const endpoint &ep) {
+    return dht_ping_node(&ep.addr, ep.addrlen);
+  }
+
+  int find_node(std::array<unsigned char, 20> &target, int af) {
+    return dht_find_node(std::data(target), af);
+  }
+
+  sockaddr_storage get_node(std::array<unsigned char, 20> &id, int af) {
+    sockaddr_storage ss;
+    dht_get_node(&ss, std::data(id), af);
+    return ss;
+  }
+
   int periodic(std::time_t &time_to_sleep, dht_callback_t *callback,
                void *closure = nullptr) {
     std::array<std::uint8_t, 4096> buf;
@@ -124,7 +139,7 @@ struct dht_service {
     return dht_get_nodes(std::data(sin), &num, std::data(sin6), &num6);
   }
 
-  int insert_node(std::array<unsigned char, 20> id, sockaddr *sa, int salen) {
+  int insert_node(std::array<unsigned char, 20> &id, sockaddr *sa, int salen) {
     return dht_insert_node(std::data(id), sa, salen);
   }
 };
@@ -142,10 +157,11 @@ int dht_sendto(int sockfd, const void *buf, int len, int flags,
     inet_ntop(AF_INET6, &(((struct sockaddr_in *)to)->sin_addr), str,
               INET6_ADDRSTRLEN);
 
-  std::cerr << "Sending over fd: " << sockfd << " Flags: " << flags
-            << " Byte count: " << len << " To: " << std::string(str) << " On: "
-            << (std::uint16_t)htons(((struct sockaddr_in *)to)->sin_port)
-            << std::endl;
+  // std::cerr << "Sending over fd: " << sockfd << " Flags: " << flags
+  //           << " Byte count: " << len << " To: " << std::string(str) << " On:
+  //           "
+  //           << (std::uint16_t)htons(((struct sockaddr_in *)to)->sin_port)
+  //           << std::endl;
   return ::sendto(sockfd, buf, len, flags, to, tolen);
 }
 
