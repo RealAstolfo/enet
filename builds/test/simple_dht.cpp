@@ -76,6 +76,18 @@ int main(int argc, char **argv) {
     while (true) {
       dht.search(info_hash, 12345, AF_INET, callback);
       // dht.find_node(info_hash, AF_INET);
+
+      char str[INET6_ADDRSTRLEN];
+
+      auto s = dht.get_node(info_hash, AF_INET);
+      std::cout << "Family: " << s.ss_family << std::endl;
+      if (s.ss_family == AF_INET)
+        inet_ntop(AF_INET, &(((struct sockaddr_in *)&s)->sin_addr), str,
+                  INET_ADDRSTRLEN);
+      else
+        inet_ntop(AF_INET6, &(((struct sockaddr_in *)&s)->sin_addr), str,
+                  INET6_ADDRSTRLEN);
+      std::cout << "Found Peer: " << std::string(str) << std::endl;
       std::this_thread::sleep_for(std::chrono::seconds(10));
     }
   });
@@ -101,8 +113,7 @@ int main(int argc, char **argv) {
    idea to reannounce every 28 minutes or so. */
     if (loop % print_countdown) {
       loop = 0;
-
-      // dht.search(info_hash, 12345, AF_INET6, callback);
+      dht.search(info_hash, 12345, AF_INET, callback);
 
       // {
       //   std::array<sockaddr_in, 500> sin;
@@ -114,18 +125,6 @@ int main(int argc, char **argv) {
       // }
 
       // dht_dump_tables(stdout);
-
-      // char str[INET6_ADDRSTRLEN];
-
-      // auto s = dht.get_node(info_hash, AF_INET);
-      // std::cout << "Family: " << s.ss_family << std::endl;
-      // if (s.ss_family == AF_INET)
-      //   inet_ntop(AF_INET, &(((struct sockaddr_in *)&s)->sin_addr), str,
-      //             INET_ADDRSTRLEN);
-      // else
-      //   inet_ntop(AF_INET6, &(((struct sockaddr_in *)&s)->sin_addr), str,
-      //             INET6_ADDRSTRLEN);
-      // std::cout << "Found Peer: " << std::string(str) << std::endl;
     }
 
     usleep(tosleep);
