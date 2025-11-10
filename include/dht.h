@@ -39,7 +39,7 @@ dht_callback_t(void *closure, int event,
 #define DHT_EVENT_CONN_CLS 6
   
 extern FILE *dht_debug;
-
+  
 int dht_init(int s, int s6, const unsigned char *id, const unsigned char *v);
 int dht_insert_node(const unsigned char *id, struct sockaddr *sa, int salen);
 int dht_ping_node(const struct sockaddr *sa, int salen);
@@ -48,9 +48,9 @@ int dht_periodic(const void *buf, size_t buflen,
                  dht_callback_t *callback, void *closure);
 int dht_search(const unsigned char *id, int port, int af,
                dht_callback_t *callback, void *closure);
-
-  int dht_find_node(const unsigned char *target, int af);
-  int dht_get_node(struct sockaddr_storage* ss, const unsigned char *id, int af);
+  
+int dht_find_node(const unsigned char *target, int af);
+int dht_get_node(struct sockaddr_storage* ss, const unsigned char *id, int af);
 int dht_nodes(int af,
               int *good_return, int *dubious_return, int *cached_return,
               int *incoming_return);

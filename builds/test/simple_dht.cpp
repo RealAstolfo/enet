@@ -24,7 +24,7 @@ static void callback(void *closure, int event, const unsigned char *info_hash,
   (void)info_hash;
 
   if (event == DHT_EVENT_SEARCH_DONE) {
-    printf("Search done.\n");
+    // printf("Search done.\n");
 
   } else if (event == DHT_EVENT_SEARCH_DONE6) {
     printf("IPv6 search done.\n");
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 
   std::thread searcher([&]() {
     while (true) {
-      dht.search(info_hash, 12345, AF_INET, callback);
+      dht.search(info_hash, 0, AF_INET, callback);
       // dht.find_node(info_hash, AF_INET);
 
       char str[INET6_ADDRSTRLEN];
