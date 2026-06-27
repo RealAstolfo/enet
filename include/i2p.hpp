@@ -76,7 +76,7 @@ struct i2p_resolver {
 
 struct i2p_socket {
   std::shared_ptr<i2p::stream::Stream> stream;
-
+  
   bool connect(const std::string &b64, const uint16_t port) {
     i2p::data::IdentityEx ident;
     ident.FromBase64(b64);

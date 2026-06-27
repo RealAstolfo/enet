@@ -36,6 +36,10 @@ struct endpoint {
     socktype = info.ai_socktype;
   }
 
+  endpoint(const std::string &b32) {
+    canonname = b32;
+  }    
+
   endpoint() {}
 };
 
