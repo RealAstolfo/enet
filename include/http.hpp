@@ -67,7 +67,7 @@ struct http_socket {
     ssize_t sent_bytes = internal.send(request_final);
     if (sent_bytes < 0) {
       std::cerr << "Error sending data" << std::endl;
-      return 0;
+      return "";
     }
 
     std::string response;

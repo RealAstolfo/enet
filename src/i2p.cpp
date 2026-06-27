@@ -3,6 +3,7 @@
 #include "api.h"
 #include "util.h"
 
+#include <Destination.h>
 #include <condition_variable>
 #include <cstdint>
 #include <map>
@@ -30,15 +31,7 @@ std::string i2p_session::get_b32_address() const {
 }
 
 void i2p_session::start() {
-  std::map<std::string, std::string> params;
-  params[i2p::client::I2CP_PARAM_INBOUND_TUNNELS_QUANTITY] =
-      std::to_string(i2p::client::DEFAULT_INBOUND_TUNNELS_QUANTITY);
-  params[i2p::client::I2CP_PARAM_INBOUND_TUNNEL_LENGTH] =
-      std::to_string(i2p::client::DEFAULT_INBOUND_TUNNEL_LENGTH);
-  params[i2p::client::I2CP_PARAM_OUTBOUND_TUNNELS_QUANTITY] =
-      std::to_string(i2p::client::DEFAULT_OUTBOUND_TUNNELS_QUANTITY);
-  params[i2p::client::I2CP_PARAM_OUTBOUND_TUNNEL_LENGTH] =
-      std::to_string(i2p::client::DEFAULT_OUTBOUND_TUNNEL_LENGTH);
+  i2p::util::Mapping params;
   local_destination = i2p::api::CreateLocalDestination(keys, true, &params);
 
   local_destination->AcceptStreams(
