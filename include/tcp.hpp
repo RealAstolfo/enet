@@ -72,6 +72,11 @@ struct tcp_resolver {
 struct tcp_socket {
   tcp_socket() : sockfd(-1) {}
 
+  // Adopt an already-open socket fd (e.g. one returned by
+  // enet::make_tcp_listener / enet::make_tcp_client, or ::accept).  Ownership
+  // passes to this tcp_socket: close() will close the fd.
+  explicit tcp_socket(int fd) : sockfd(fd) {}
+
   bool bind(const endpoint ep) {
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd == -1) {
