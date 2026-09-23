@@ -47,6 +47,7 @@ LIB_OBJS = dht.o
 # path (CPATH/LIBRARY_PATH).  Its static archives link into enet executables;
 # boost/openssl/zlib are i2pd's own deps and are also linked statically.
 LIB_OBJS += i2p.o
+LIB_OBJS += mdns.o
 # Boost.System is header-only since Boost 1.69 (we build against 1.83), so no
 # libboost_system archive is needed -- the symbols i2pd uses are inline.  Guix
 # ships boost shared-only anyway; keeping the link fully static this way avoids
@@ -59,6 +60,10 @@ dht.o:
 
 i2p.o:
 	${CXX} ${CXXFLAGS} ${SSL_CFLAGS} -c src/i2p.cpp -o $@
+
+# mDNS/DNS-SD service discovery (mjansson/mdns header from Guix; pure sockets).
+mdns.o:
+	${CXX} ${CXXFLAGS} -c src/mdns_service.cpp -o $@
 
 $(LIB_ARCHIVE): $(LIB_OBJS)
 	$(AR) rcs $@ $^
@@ -132,6 +137,16 @@ i2p-test: i2p-test.o i2p.o
 	${CXX} ${CXXFLAGS} $^ ${LDFLAGS} ${I2P_LIBS} ${SSL_LIBS} ${ZLIB_LIBS} -o $@
 
 #########################################################################################
+# mDNS service-discovery test
+#########################################################################################
+
+mdns-service-test.o:
+	${CXX} ${CXXFLAGS} -I./tests -c tests/mdns_test.cpp -o $@
+
+mdns-test: mdns-service-test.o mdns.o
+	${CXX} ${CXXFLAGS} $^ ${LDFLAGS} -o $@
+
+#########################################################################################
 # Test suite
 #########################################################################################
 # The header-only helpers (socket_io.hpp, tcp_listener.hpp) only compile when a
@@ -159,7 +174,7 @@ sanitize-address:
 
 #########################################################################################
 
-all: lib http-test https-test network-buffer-test dht-test i2p-test
+all: lib http-test https-test network-buffer-test dht-test i2p-test mdns-test
 
 # Install: static archive to $(PREFIX)/lib, headers to $(PREFIX)/include.
 install: lib
