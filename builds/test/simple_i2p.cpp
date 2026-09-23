@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
                        uri = match[3].str();
                      }
                      while (b64.length() == 0)
-                       b64 = ir.resolve(host);
+                       b64 = ir.resolve(host).canonname;
 
                      return false;
                    }));

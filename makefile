@@ -11,7 +11,7 @@ NAME = enet
 LIB_ARCHIVE = lib$(NAME).a
 
 # Headers: this repo plus whatever Guix put on the search path (exstd, openssl,
-# zlib, libmd, util-linux, optionally i2pd).  No -I./vendors: the vendored tree
+# zlib, libmd, util-linux, i2pd-lib).  No -I./vendors: the vendored tree
 # is gone; siblings/third-party headers arrive via CPATH from the Guix inputs.
 INC = -I./include
 LIB = -L.
@@ -122,7 +122,7 @@ dht-test: dht-test.o dht.o
 	${CXX} ${CXXFLAGS} $^ ${LDFLAGS} ${MD_LIBS} -o $@
 
 #########################################################################################
-# I2P Client Testing (optional, requires I2P=1 and an i2pd that exports the lib)
+# I2P Client Testing
 #########################################################################################
 
 i2p-test.o:
@@ -133,7 +133,7 @@ i2p-test: i2p-test.o i2p.o
 
 #########################################################################################
 
-all: lib http-test https-test network-buffer-test dht-test
+all: lib http-test https-test network-buffer-test dht-test i2p-test
 
 # Install: static archive to $(PREFIX)/lib, headers to $(PREFIX)/include.
 install: lib

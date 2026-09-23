@@ -8,18 +8,15 @@
 ;;;   openssl / zlib       -- TLS + compression for the http/https stack
 ;;;   libmd                -- <md5.h> used by the DHT implementation
 ;;;   util-linux           -- libuuid (<uuid/uuid.h>)
-;;;   i2pd                 -- OPTIONAL I2P support (see below)
+;;;   i2pd-lib             -- I2P transport (i2pd built as a static library)
 ;;;
 ;;; De-vendored: the entire vendors/ tree is gone.  exstd's headers come from
 ;;; the sibling guix.scm; everything else comes from Guix inputs on the
 ;;; compiler's CPATH / LIBRARY_PATH search paths.
 ;;;
-;;; I2P support is OPTIONAL.  Upstream i2pd is built by Guix as a daemon and
-;;; does not export a consumable libi2pd.a + header tree, so the core library
-;;; (libenet.a = the DHT object) builds WITHOUT i2p by default.  The Makefile
-;;; gates the i2p translation unit behind `I2P=1`; flip the make-flag and the
-;;; i2pd input is on the search path when an i2pd that exports the library and
-;;; headers is available.
+;;; I2P is a first-class transport: Guix ships i2pd only as a daemon, so
+;;; guix/lib.scm builds i2pd-lib (static libi2pd*.a + headers) and i2p.o is
+;;; always part of libenet.a.
 ;;;
 ;;; Built two ways from the same tree:
 ;;;   CI:    guix build -f guix.scm
@@ -66,12 +63,11 @@
   ;; statically.  i2pd-lib provides libi2pd*.a + headers (I2P is first-class).
   (inputs (cons exstd %enet-3p))
   (native-inputs (list gcc-toolchain %pkg-config))
-  (synopsis "C++20 networking library (HTTP, HTTPS, DHT, optional I2P)")
+  (synopsis "C++20 networking library (HTTP, HTTPS, DHT, I2P)")
   (description
    "enet is a C++20 networking library providing TCP/UDP helpers, an HTTP and
 HTTPS client/server stack (OpenSSL), a Kademlia-style DHT, a network buffer
-abstraction, and optional I2P transport.  It builds to a static archive
-(libenet.a) consumed by downstream framework repositories such as erpc and
-eengine.  I2P support is optional and gated behind the i2pd input.")
+abstraction, and I2P transport.  It builds to a static archive (libenet.a)
+consumed by downstream framework repositories such as erpc and eengine.")
   (home-page "https://github.com/RealAstolfo/enet")
   (license license:expat))
