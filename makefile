@@ -31,7 +31,7 @@ UUID_LIBS   = -Wl,-Bstatic $(shell pkg-config --libs-only-l uuid) -Wl,-Bdynamic 
 # Static C++/gcc runtimes per the mostly-static link policy.
 STATIC_RT = -static-libstdc++ -static-libgcc
 
-CFLAGS   = -march=native -O3 -g -Wall -Wextra -pedantic $(INC)
+CFLAGS   = -march=native -O3 -g -Wall -Wextra -pedantic $(INC) $(SANFLAGS)
 CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS  = $(LIB) -O3 $(STATIC_RT)
 
@@ -132,6 +132,32 @@ i2p-test: i2p-test.o i2p.o
 	${CXX} ${CXXFLAGS} $^ ${LDFLAGS} ${I2P_LIBS} ${SSL_LIBS} ${ZLIB_LIBS} -o $@
 
 #########################################################################################
+# Test suite
+#########################################################################################
+# The header-only helpers (socket_io.hpp, tcp_listener.hpp) only compile when a
+# translation unit includes them, so the tests are where they are actually
+# built.  `make test` rebuilds every test from scratch and runs them; any
+# failure stops the run.  `make sanitize-address` does the same under
+# ASan+UBSan (enet does not use mimalloc, so a plain -fsanitize=address,undefined
+# suffices; the single compile+link command applies the flags to both stages).
+TESTS = socket-io-test
+
+socket-io-test: tests/socket_io_test.cpp include/socket_io.hpp include/tcp_listener.hpp include/tcp.hpp tests/check.hpp
+	mkdir -p tests/bin
+	${CXX} ${CXXFLAGS} -I./tests tests/socket_io_test.cpp -pthread -o tests/bin/$@
+
+# A full rebuild is forced (via clean) so that switching sanitizer flags between
+# `make test` and `make sanitize-address` always recompiles the binaries.
+test:
+	$(MAKE) clean
+	$(MAKE) $(TESTS)
+	@set -e; for t in $(TESTS); do echo "== $$t"; $(TEST_RUNNER) ./tests/bin/$$t; done
+
+sanitize-address:
+	$(MAKE) test SANFLAGS="-O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+	$(MAKE) clean
+
+#########################################################################################
 
 all: lib http-test https-test network-buffer-test dht-test i2p-test
 
@@ -148,10 +174,11 @@ clangd:
 clean:
 	-rm -f http-test https-test i2p-test http_socks4_client http_socks4_server \
 		network-buffer-test dht-test $(LIB_ARCHIVE) *.o
+	-rm -rf tests/bin
 
 
 # Position-independent code: required so each repo's static archive can be
 # bundled into the eengine umbrella shared library (libeengine.so).
 CFLAGS   += -fPIC
 CXXFLAGS += -fPIC
-.PHONY: all lib install clangd clean
+.PHONY: all lib install clangd clean test sanitize-address

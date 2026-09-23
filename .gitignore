@@ -10,3 +10,4 @@
 *.spv
 compile_commands.json
 vendors/
+tests/bin/
