@@ -26,6 +26,7 @@
 #endif
 
 #include "endpoint.hpp"
+#include <stdexcept>
 
 struct tcp_resolver {
   tcp_resolver() {
@@ -179,6 +180,10 @@ struct tcp_socket {
       if (bytes_read == -1) {
         std::cerr << "Failed to receive data." << std::endl;
         return -1;
+      } else if (bytes_read == 0) {
+        // Peer closed the connection: recv keeps returning 0, so without
+        // this the loop would spin forever waiting to fill the buffer.
+        throw std::runtime_error("enet tcp: peer closed connection (EOF)");
       } else if (bytes_read > 0)
         total_bytes_read += bytes_read;
     }

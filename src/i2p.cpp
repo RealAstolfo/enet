@@ -31,7 +31,17 @@ std::string i2p_session::get_b32_address() const {
 }
 
 void i2p_session::start() {
+  // Explicit tunnel defaults (i2pd would apply these anyway, but pinning them
+  // keeps behaviour stable across i2pd versions).
   i2p::util::Mapping params;
+  params.Insert(i2p::client::I2CP_PARAM_INBOUND_TUNNELS_QUANTITY,
+                std::to_string(i2p::client::DEFAULT_INBOUND_TUNNELS_QUANTITY));
+  params.Insert(i2p::client::I2CP_PARAM_INBOUND_TUNNEL_LENGTH,
+                std::to_string(i2p::client::DEFAULT_INBOUND_TUNNEL_LENGTH));
+  params.Insert(i2p::client::I2CP_PARAM_OUTBOUND_TUNNELS_QUANTITY,
+                std::to_string(i2p::client::DEFAULT_OUTBOUND_TUNNELS_QUANTITY));
+  params.Insert(i2p::client::I2CP_PARAM_OUTBOUND_TUNNEL_LENGTH,
+                std::to_string(i2p::client::DEFAULT_OUTBOUND_TUNNEL_LENGTH));
   local_destination = i2p::api::CreateLocalDestination(keys, true, &params);
 
   local_destination->AcceptStreams(
