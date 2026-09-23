@@ -69,8 +69,10 @@ inline void deinit_i2p() {
 }
 
 struct i2p_resolver {
-  std::string resolve(const std::string &b32) {
-    return i2p_session::instance().resolve(b32);
+  endpoint resolve(const std::string &b32) {
+    endpoint e;
+    e.canonname = i2p_session::instance().resolve(b32);
+    return e;
   }
 };
 
