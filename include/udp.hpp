@@ -68,6 +68,11 @@ struct udp_resolver {
 
 struct udp_socket {
   udp_socket() : sockfd(-1) {}
+  // The fd is per-instance: close on destruction, and forbid copies so a copy can never
+  // double-close an fd the original still owns.
+  ~udp_socket() { close(); }
+  udp_socket(const udp_socket &) = delete;
+  udp_socket &operator=(const udp_socket &) = delete;
 
   bool bind(const endpoint ep, bool reuse = false) {
     int fd = socket(ep.family, SOCK_DGRAM, 0);
