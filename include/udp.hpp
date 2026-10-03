@@ -16,6 +16,7 @@
 #include <ws2udpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -68,20 +69,33 @@ struct udp_resolver {
 struct udp_socket {
   udp_socket() : sockfd(-1) {}
 
-  bool bind(const endpoint ep) {
-    sockfd = socket(ep.family, SOCK_DGRAM, 0);
-    if (sockfd == -1) {
+  bool bind(const endpoint ep, bool reuse = false) {
+    int fd = socket(ep.family, SOCK_DGRAM, 0);
+    if (fd == -1) {
       std::cerr << "Failed to create socket." << std::endl;
       return false;
     }
 
-    if (::bind(sockfd, reinterpret_cast<const sockaddr *>(&ep.addr),
-               sizeof(ep.addr)) < 0) {
+    if (reuse) {
+      // Explicit per-call opt-in; a game session's two sockets bind fixed ports.
+#ifdef SO_REUSEADDR
+      int one = 1;
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&one),
+                 sizeof(one));
+#endif
+    }
+
+    if (::bind(fd, reinterpret_cast<const sockaddr *>(&ep.addr), ep.addrlen) < 0) {
       std::cerr << "Bind failed." << std::endl;
-      close();
+#ifdef _WIN32
+      closesocket(fd);
+#else
+      ::close(fd);
+#endif
       return false;
     }
 
+    sockfd = fd;
     return true;
   }
 
@@ -126,10 +140,26 @@ struct udp_socket {
       return -1;
     }
 
+    // The caller may hand back the endpoint of a previous receive; the kernel always writes
+    // the peer address, so the length must be the struct's own, not a stale one.
+    from.addrlen = sizeof(from.addr);
     ssize_t bytes_read =
         ::recvfrom(sockfd, std::data(buffer), std::size(buffer), flags,
                    &from.addr, &from.addrlen);
     return bytes_read;
+  }
+
+  // Non-blocking receive: the frame engine polls the socket between logic frames (the original
+  // is single-threaded; the ra2e net session mirrors it, no threads on the sim path).
+  int nonblocking(bool on) {
+    if (sockfd == -1)
+      return -1;
+#ifdef _WIN32
+    u_long mode = on ? 1 : 0;
+    return ioctlsocket(sockfd, FIONBIO, &mode);
+#else
+    return fcntl(sockfd, F_SETFL, on ? O_NONBLOCK : 0);
+#endif
   }
 
   template <typename Container>

@@ -2,6 +2,7 @@
 #define ENDPOINT_HPP
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 #ifdef _WIN32
@@ -38,7 +39,26 @@ struct endpoint {
 
   endpoint(const std::string &b32) {
     canonname = b32;
-  }    
+  }
+
+  // Dotted-quad IPv4 address + port: the loopback transports build {127.x.y.z, port} directly
+  // without a resolver hop.
+  endpoint(const char *ip, std::uint16_t port) {
+    sockaddr_in sa{};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip, &sa.sin_addr) != 1) {
+      std::memset(&sa, 0, sizeof sa);
+      sa.sin_family = AF_INET;
+    }
+    std::memcpy(&addr, &sa, sizeof sa);
+    addrlen = sizeof sa;
+    canonname = std::string(ip) + ":" + std::to_string(port);
+    family = AF_INET;
+    flags = 0;
+    protocol = 0;
+    socktype = SOCK_DGRAM;
+  }
 
   endpoint() {}
 };
