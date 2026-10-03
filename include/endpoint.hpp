@@ -8,7 +8,9 @@
 #ifdef _WIN32
 #define _WIN32_WINNT 0x0600
 #include <winsock2.h>
-#include <ws2udpip.h>
+// ws2udpip.h is a legacy mingw.org header; mingw-w64 (guix + MSYS2) has all of
+// its IPv6/addrinfo surface in ws2tcpip.h instead.
+#include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
