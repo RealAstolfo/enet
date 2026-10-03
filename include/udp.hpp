@@ -69,10 +69,20 @@ struct udp_resolver {
 };
 
 struct udp_socket {
-  udp_socket() : sockfd(-1) {}
-  // The fd is per-instance: close on destruction, and forbid copies so a copy can never
-  // double-close an fd the original still owns.
-  ~udp_socket() { close(); }
+  udp_socket() : sockfd(-1) {
+#ifdef _WIN32
+    // Winsock must be started before any socket call; WSAStartup is refcounted per process,
+    // so every socket owns one startup here and one cleanup in its destructor.
+    WSADATA ws{};
+    WSAStartup(MAKEWORD(2, 2), &ws);
+#endif
+  }
+  ~udp_socket() {
+    close();
+#ifdef _WIN32
+    WSACleanup();
+#endif
+  }
   udp_socket(const udp_socket &) = delete;
   udp_socket &operator=(const udp_socket &) = delete;
 
@@ -130,8 +140,8 @@ struct udp_socket {
       return -1;
     }
 
-    ssize_t bytes_sent = ::sendto(sockfd, std::data(data), std::size(data),
-                                  flags, &to.addr, to.addrlen);
+    ssize_t bytes_sent = ::sendto(sockfd, reinterpret_cast<const char *>(std::data(data)),
+                                  std::size(data), flags, &to.addr, to.addrlen);
     if (bytes_sent == -1) {
       std::cerr << "Failed to send data." << std::endl;
       return -1;
@@ -150,9 +160,8 @@ struct udp_socket {
     // The caller may hand back the endpoint of a previous receive; the kernel always writes
     // the peer address, so the length must be the struct's own, not a stale one.
     from.addrlen = sizeof(from.addr);
-    ssize_t bytes_read =
-        ::recvfrom(sockfd, std::data(buffer), std::size(buffer), flags,
-                   &from.addr, &from.addrlen);
+    ssize_t bytes_read = ::recvfrom(sockfd, reinterpret_cast<char *>(std::data(buffer)),
+                                    std::size(buffer), flags, &from.addr, &from.addrlen);
     return bytes_read;
   }
 
